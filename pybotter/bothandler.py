@@ -55,12 +55,7 @@ class BotHandler:
         self.window_name = window_name
         self.soundpath = os.path.join(os.path.dirname(__file__),'sound')
         self.hwnd = None
-        if self.window_name is None:
-            self.hwnd = win32gui.GetDesktopWindow()
-        else:
-            self.hwnd = win32gui.FindWindow(None, self.window_name)
-            if not self.hwnd:
-                raise Exception('Window not found: {}'.format(self.window_name))
+        self.get_window_handle()
         self.s = sched.scheduler(time, sleep)
         self.window_handler = WindowHandler(self.window_name)
         self.soundhandler = SoundHandler(self.soundpath)
@@ -71,6 +66,14 @@ class BotHandler:
         self.screenshot = None
         self.debug = debug
         self.images = {str:Vision}
+
+    def get_window_handle(self):
+        if self.window_name is None:
+            self.hwnd = win32gui.GetDesktopWindow()
+        else:
+            self.hwnd = win32gui.FindWindow(None, self.window_name)
+            if not self.hwnd:
+                raise Exception('Window not found: {}'.format(self.window_name))
 
     @staticmethod
     def check_file_exist(path):

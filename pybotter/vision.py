@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-
+import os
 
 class Vision:
 
@@ -28,80 +28,57 @@ class Vision:
         pass
     
 
-    def find(self, haystack_img, threshold=0.5, convert_mode = None,  debug_mode=None):
-        "convert method = COLOR_BGR2GRAY"
-        haystack = None
-        if (convert_mode != None):
+    def find(self, haystack_img, threshold=1, convert_mode=None, debug_mode=None):
+        """
+        Template matching function to find needle_img inside haystack_img.
+        - convert_mode: cv2 color conversion flag (e.g., cv2.COLOR_BGR2GRAY)
+        - debug_mode: 'rectangles', 'points', 'save', 'debug' to visualize results
+        """
+        # Optional conversion or enforce both haystack and needle as grayscale
+        if convert_mode:
             haystack = cv2.cvtColor(haystack_img, convert_mode)
             needle = cv2.cvtColor(self.needle_img, convert_mode)
         else:
-            haystack = haystack_img
-            needle = self.needle_img
+            # Force both to grayscale to avoid dimension mismatch
+            haystack = cv2.cvtColor(haystack_img, cv2.COLOR_BGR2GRAY) if len(haystack_img.shape) == 3 else haystack_img
+            needle = cv2.cvtColor(self.needle_img, cv2.COLOR_BGR2GRAY) if len(self.needle_img.shape) == 3 else self.needle_img
+
+        # Force both to uint8 type
+        haystack = haystack.astype(np.uint8)
+        needle = needle.astype(np.uint8)
+
+        # Safety check for template size
+        if haystack.shape[0] < needle.shape[0] or haystack.shape[1] < needle.shape[1]:
+            print("Error: Needle image is larger than haystack.")
+            return []
+
+        # Now safe to match
         result = cv2.matchTemplate(haystack, needle, self.method)
         locations = np.where(result >= threshold)
         locations = list(zip(*locations[::-1]))
 
-        
-        #print(locations)
-  
-        #cv2.namedWindow('Matches', cv2.WINDOW_NORMAL)
-        #h,w = haystack.shape[:2]
-        #cv2.imshow('Matches', needle)
-        #print(w, h)
-
-        #cv2.resizeWindow('Matches', w, h)
-
-        # You'll notice a lot of overlapping rectangles get drawn. We can eliminate those redundant
-        # locations by using groupRectangles().
-        # First we need to create the list of [x, y, w, h] rectangles
         rectangles = []
         for loc in locations:
             rect = [int(loc[0]), int(loc[1]), self.needle_w, self.needle_h]
-            # Add every box to the list twice in order to retain single (non-overlapping) boxes
             rectangles.append(rect)
             rectangles.append(rect)
-        # Apply group rectangles.
-        # The groupThreshold parameter should usually be 1. If you put it at 0 then no grouping is
-        # done. If you put it at 2 then an object needs at least 3 overlapping rectangles to appear
-        # in the result. I've set eps to 0.5, which is:
-        # "Relative difference between sides of the rectangles to merge them into a group."
-        rectangles, weights = cv2.groupRectangles(rectangles, groupThreshold=1, eps=0.5)
-        #print(rectangles)
+
+        rectangles, _ = cv2.groupRectangles(rectangles, groupThreshold=1, eps=0.5)
 
         points = []
-        if len(rectangles):
-            #print('Found needle.')
+        for (x, y, w, h) in rectangles:
+            center_x = x + int(w / 2)
+            center_y = y + int(h / 2)
+            points.append((center_x, center_y))
 
-            line_color = (0, 255, 0)
-            line_type = cv2.LINE_4
-            marker_color = (255, 0, 255)
-            marker_type = cv2.MARKER_CROSS
+            if debug_mode:
+                color = (0, 255, 0)
+                cv2.rectangle(haystack_img, (x, y), (x + w, y + h), color, 2)
 
-            # Loop over all the rectangles
-            for (x, y, w, h) in rectangles:
+        if debug_mode:
+            cv2.imshow('Matches', haystack_img)
+            cv2.waitKey(1)
 
-                # Determine the center position
-                center_x = x + int(w/2)
-                center_y = y + int(h/2)
-                # Save the points
-                points.append((center_x, center_y))
-                if debug_mode:
-                    if ('rectangles' in debug_mode) or ('debug' in debug_mode):
-                        # Determine the box position
-                        top_left = (x, y)
-                        bottom_right = (x + w, y + h)
-                        # Draw the box
-                        cv2.rectangle(haystack, top_left, bottom_right, color=line_color, 
-                                    lineType=line_type, thickness=2)
-                    elif 'points' in debug_mode:
-                        # Draw the center point
-                        cv2.drawMarker(haystack, (center_x, center_y), 
-                                    color=marker_color, markerType=marker_type, 
-                                    markerSize=20, thickness=2)
-                    cv2.imshow('Matches', haystack)
-                    if "save" in debug_mode:
-                        cv2.imwrite(f'debug/vision.find_screenshot{self.needle_img_path}', haystack)
-        #cv2.waitKey()
-        for i in range(len(points)):
-            points[i] = (int(points[i][0] / 1.2234), int(points[i][1] / 1.2234))
+        # Optional scaling
+        points = [(int(x / 1.2234), int(y / 1.2234)) for x, y in points]
         return points

@@ -6,5 +6,7 @@ build/*
 dist/*
 pybotter.egg-info/*
 *.pyc
+*.png
 simplerun.py
 trash
+.venv/*

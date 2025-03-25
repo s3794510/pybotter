@@ -1,8 +1,15 @@
 from .bothandler import BotHandler
 from .windowhandler import WindowHandler
+import winsound, time, threading
 
 class PyBot:
     
+    def __init__(self, window_name, debug = None):
+        self.debug = debug
+        self.window_name = window_name
+        self.bothandler = BotHandler(window_name, self.debug)
+        print("Object PyBot created, Window name: ", self.window_name)
+
     def mainloop(self, func):
         def run():
             # Start program text
@@ -24,11 +31,7 @@ class PyBot:
         while(self.bothandler.is_running):
     
             # get an updated image of the game
-            self.bothandler.update_screenshot()
-
-            # debug: pop up a window that show the screen shot
-            if(self.debug):
-                self.bothandler.show_screenshot()
+            self.bothandler.update_screenshot(self.debug)
 
             # Put the actions (mouse/keyboard) inside function actions in this class
             actions()
@@ -43,12 +46,6 @@ class PyBot:
             return_code = func(*args, **kwargs)
             return return_code
         return run
-
-    def __init__(self, window_name, debug = None):
-        self.debug = debug
-        self.window_name = window_name
-        self.bothandler = BotHandler(window_name, self.debug)
-        print("Object PyBot created, Window name: ", self.window_name)
 
     def list_windows():
         return WindowHandler.list_window_titles()
@@ -72,4 +69,20 @@ class PyBot:
 
     def resize(self, x, y):
         return self.bothandler.resize(x, y)
-        
+    
+    def play_alarm(self):
+        def alarm_sound():
+            alarm_sequence = [
+                (1000, 100),
+                (1200, 100),
+                (1500, 100)
+
+            ]
+            for freq, dur in alarm_sequence:
+                winsound.Beep(freq, dur)
+                time.sleep(0.05)
+
+        threading.Thread(target=alarm_sound, daemon=True).start()
+    
+    def wait(self, duration):
+        time.sleep(duration)
