@@ -72,8 +72,8 @@ class BotHandler:
             self.hwnd = win32gui.GetDesktopWindow()
         else:
             self.hwnd = win32gui.FindWindow(None, self.window_name)
-            if not self.hwnd:
-                raise Exception('Window not found: {}'.format(self.window_name))
+            # if not self.hwnd:
+            #     raise Exception('Window not found: {}'.format(self.window_name))
 
     @staticmethod
     def check_file_exist(path):

@@ -12,12 +12,12 @@ class WindowHandler:
         self.window_name = window_name
         self.hwnd = None
         self.find_window()
-        if not self.hwnd:
-            raise Exception(f"[ERROR] Cannot find window: {window_name}")
         self.w, self.h = self.get_window_size()
 
     def get_window_size(self):
         # Get the client area size (exclude borders, title bar)
+        if (self.hwnd is None or self.hwnd == 0):
+            return 100, 100
         rect = win32gui.GetClientRect(self.hwnd)
         w = rect[2] - rect[0]
         h = rect[3] - rect[1]
@@ -28,8 +28,8 @@ class WindowHandler:
             self.hwnd = win32gui.GetDesktopWindow()
         else:
             self.hwnd = win32gui.FindWindow(None, self.window_name)
-            if not self.hwnd:
-                raise Exception('Window not found: {}'.format(self.window_name))
+            # if not self.hwnd:
+            #     raise Exception('Window not found: {}'.format(self.window_name))
 
     def get_screenshot(self, debug=False):
         w, h = self.w, self.h
