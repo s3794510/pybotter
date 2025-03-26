@@ -37,7 +37,7 @@ class WindowHandler:
         # Validate window handle
         if not win32gui.IsWindow(self.hwnd):
             print("[INFO] Window handle invalid. Trying to find the window again...")
-            self.hwnd = self.find_window()
+            self.find_window()
             if not self.hwnd or not win32gui.IsWindow(self.hwnd):
                 print("[ERROR] Window not found. Returning black screen.")
                 return np.zeros((h, w, 3), dtype=np.uint8)
@@ -45,17 +45,22 @@ class WindowHandler:
         hwnd = self.hwnd
 
         try:
+            # Get window rect (includes border and title bar)
+            window_rect = win32gui.GetWindowRect(hwnd)
+            win_w = window_rect[2] - window_rect[0]
+            win_h = window_rect[3] - window_rect[1]
+
             # Get the window device context
             hwndDC = win32gui.GetWindowDC(hwnd)
             srcDC = win32ui.CreateDCFromHandle(hwndDC)
             memDC = srcDC.CreateCompatibleDC()
 
-            # Create a compatible bitmap
+            # Create a compatible bitmap for the whole window
             bmp = win32ui.CreateBitmap()
-            bmp.CreateCompatibleBitmap(srcDC, w, h)
+            bmp.CreateCompatibleBitmap(srcDC, win_w, win_h)
             memDC.SelectObject(bmp)
 
-            # Use ctypes to call PrintWindow
+            # Use PrintWindow to capture the full window (with borders)
             result = ctypes.windll.user32.PrintWindow(hwnd, memDC.GetSafeHdc(), 0x2)
 
             if result != 1:
@@ -65,7 +70,16 @@ class WindowHandler:
                 # Convert the bitmap to numpy array
                 bmp_info = bmp.GetInfo()
                 bmp_str = bmp.GetBitmapBits(True)
-                img = np.frombuffer(bmp_str, dtype=np.uint8).reshape((h, w, 4))
+                full_img = np.frombuffer(bmp_str, dtype=np.uint8).reshape((win_h, win_w, 4))
+
+                # Get the client area position relative to the window
+                client_rect = win32gui.GetClientRect(hwnd)
+                client_pos = win32gui.ClientToScreen(hwnd, (0, 0))
+                border_left = client_pos[0] - window_rect[0]
+                border_top = client_pos[1] - window_rect[1]
+
+                # Crop the client area from the full image
+                img = full_img[border_top:border_top + h, border_left:border_left + w]
                 img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
             # Cleanup GDI resources
@@ -83,6 +97,7 @@ class WindowHandler:
             cv2.waitKey(1)
 
         return img
+
 
 
     ######################################################
