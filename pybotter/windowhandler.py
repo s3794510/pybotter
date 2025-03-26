@@ -6,7 +6,7 @@ import cv2
 import ctypes
 
 class WindowHandler:
-    
+
     # constructor
     def __init__(self, window_name=None):
         self.window_name = window_name
@@ -22,12 +22,7 @@ class WindowHandler:
         w = rect[2] - rect[0]
         h = rect[3] - rect[1]
         return w, h
-    
-    def get_client_area_offset(self):
-        # Get the top-left corner of the client area in screen coordinates
-        point = win32gui.ClientToScreen(self.hwnd, (0, 0))
-        return point  # (x, y)
-        
+
     def find_window(self):
         if self.window_name is None:
             self.hwnd = win32gui.GetDesktopWindow()
@@ -35,9 +30,6 @@ class WindowHandler:
             self.hwnd = win32gui.FindWindow(None, self.window_name)
             if not self.hwnd:
                 raise Exception('Window not found: {}'.format(self.window_name))
-
-
-
 
     def get_screenshot(self, debug=False):
         w, h = self.w, self.h

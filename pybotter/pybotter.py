@@ -4,9 +4,18 @@ import winsound, time, threading
 
 class PyBot:
     
-    def __init__(self, window_name, debug = None):
-        self.debug = debug
+    def __init__(self, window_name, sleeptime = 0, debug = None):
+        '''
+        window_name (str): name of the target window
+        sleeptime (int): amount of seconds wait after each cycle
+        debug: debug mode
+        '''
+        if not debug:
+            self.debug = ''
+        else:
+            self.debug = debug
         self.window_name = window_name
+        self.sleeptime = sleeptime
         self.bothandler = BotHandler(window_name, self.debug)
         print("Object PyBot created, Window name: ", self.window_name)
 
@@ -36,7 +45,8 @@ class PyBot:
             # Put the actions (mouse/keyboard) inside function actions in this class
             actions()
 
-            self.bothandler.flow_handle()
+            # hanlding after each cycle
+            self.bothandler.flow_handle(sleep_time = self.sleeptime, debug = self.debug)
         self.bothandler.destroyAllWindows()
         return 0
 

@@ -130,10 +130,9 @@ class BotHandler:
         # waits 1 ms every loop to process key presses
         if cv2.waitKey(1) == ord('q'):
             self.exit()
-        if (debug):
-            # calcualte times processed each second
-            self.fps = 1 / (time() - self.loop_time)
-            self.loop_time = time()
+        # calcualte times processed each second
+        self.fps = 1 / (time() - self.loop_time)
+        self.loop_time = time()
 
 
     def init(self):
@@ -222,8 +221,6 @@ class BotHandler:
     def update_screenshot(self, debug = None):
         self.screenshot = self.window_handler.get_screenshot(debug)
 
-    def show_screenshot(self):
-        cv2.imshow("Screenshot", self.screenshot)
 
     def __actions__(self): # PUT BOT ACTIONS HERE
         points = self.area_img.find(self.screenshot, 0.8, self.debug, cv2.COLOR_BGR2GRAY)

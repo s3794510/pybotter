@@ -75,7 +75,7 @@ class Vision:
                 color = (0, 255, 0)
                 cv2.rectangle(haystack_img, (x, y), (x + w, y + h), color, 2)
 
-        if debug_mode:
+        if 'match' in debug_mode:
             cv2.imshow('Matches', haystack_img)
             cv2.waitKey(1)
 
