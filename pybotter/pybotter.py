@@ -22,9 +22,9 @@ class PyBot:
     def mainloop(self, func):
         def run():
             # Start program text
-            print("""Hold shift + ESC to stop
-            Hold shift + P to pause/unpause.
-            Hold shift + F to show FPS
+            print("""Hold Ctrl + ESC to stop
+            Hold Ctrl + P to pause/unpause.
+            Hold Ctrl + F to show FPS
             Program is running.
             """)
 
@@ -83,14 +83,17 @@ class PyBot:
     def play_alarm(self):
         def alarm_sound():
             alarm_sequence = [
-                (1000, 100),
-                (1200, 100),
-                (1500, 100)
+                (1000, 50),
+                (1200, 50),
+                (1500, 50),
+                (1000, 50),
+                (1200, 50),
+                (1500, 50)
 
             ]
             for freq, dur in alarm_sequence:
                 winsound.Beep(freq, dur)
-                time.sleep(0.05)
+                time.sleep(0.5)
 
         threading.Thread(target=alarm_sound, daemon=True).start()
     

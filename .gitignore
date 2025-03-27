@@ -10,3 +10,4 @@ pybotter.egg-info/*
 simplerun.py
 trash
 .venv/*
+*.spec

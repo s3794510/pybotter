@@ -126,6 +126,8 @@ class BotHandler:
 
     def flow_handle(self, sleep_time = 0, debug = 'regular'):
         sleep(sleep_time)
+        while self.is_pause:
+            sleep(0.05)
         # press 'q' with the output window focused to exit.
         # waits 1 ms every loop to process key presses
         if cv2.waitKey(1) == ord('q'):
@@ -180,14 +182,14 @@ class BotHandler:
         while self.is_running:
             sleep(sleep_time)
             if done:
-                if not self.is_pause and keyboard.is_pressed('p') and keyboard.is_pressed('shift'):
+                if not self.is_pause and keyboard.is_pressed('p') and keyboard.is_pressed('control'):
                     done = False
                     self.pause()
                     sleep(0.5)
                     done = True
                     
             if done:
-                if self.is_pause and keyboard.is_pressed('p') and keyboard.is_pressed('shift'):   
+                if self.is_pause and keyboard.is_pressed('p') and keyboard.is_pressed('control'):   
                     done = False   
                     self.unpause()
                     sleep(0.5)
@@ -202,7 +204,7 @@ class BotHandler:
     def exit_handle(self, sleep_time = 0.05):
         while self.is_running:
             sleep(sleep_time)
-            if keyboard.is_pressed('esc') and keyboard.is_pressed('shift'):
+            if keyboard.is_pressed('esc') and keyboard.is_pressed('control'):
                 self.exit()
 
 
@@ -213,7 +215,7 @@ class BotHandler:
     def show_fps_handle(self, sleep_time = 0.1):
         while self.is_running:
             sleep(sleep_time)
-            if keyboard.is_pressed('f') and keyboard.is_pressed('shift'):
+            if keyboard.is_pressed('f') and keyboard.is_pressed('control'):
                 print(f"FPS: {self.fps}")
                 print("Threads: ", threading.active_count())
                 sleep(1)
