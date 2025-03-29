@@ -17,6 +17,7 @@ class PyBot:
         self.window_name = window_name
         self.sleeptime = sleeptime
         self.bothandler = BotHandler(window_name, self.debug)
+        self.alarm_lock = threading.Lock()
         print("Object PyBot created, Window name: ", self.window_name)
 
     def mainloop(self, func):
@@ -82,18 +83,23 @@ class PyBot:
     
     def play_alarm(self):
         def alarm_sound():
-            alarm_sequence = [
-                (1000, 50),
-                (1200, 50),
-                (1500, 50),
-                (1000, 50),
-                (1200, 50),
-                (1500, 50)
-
-            ]
-            for freq, dur in alarm_sequence:
-                winsound.Beep(freq, dur)
-                time.sleep(0.5)
+            if not self.alarm_lock.acquire(blocking=False):
+                return  # Exit if another alarm is already running
+            
+            try:
+                alarm_sequence = [
+                    (1000, 50),
+                    (1200, 50),
+                    (1500, 50),
+                    (1000, 50),
+                    (1200, 50),
+                    (1500, 50)
+                ]
+                for freq, dur in alarm_sequence:
+                    winsound.Beep(freq, dur)
+                    time.sleep(0.1)
+            finally:
+                self.alarm_lock.release()  # Ensure lock is released
 
         threading.Thread(target=alarm_sound, daemon=True).start()
     
