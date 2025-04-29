@@ -35,6 +35,9 @@ class Vision:
         - debug_mode: 'rectangles', 'points', 'save', 'debug' to visualize results
         """
         # Optional conversion or enforce both haystack and needle as grayscale
+        if haystack_img is None:
+            print("[Warning] Can't find needle without haystack")
+            return None
         if convert_mode:
             haystack = cv2.cvtColor(haystack_img, convert_mode)
             needle = cv2.cvtColor(self.needle_img, convert_mode)
