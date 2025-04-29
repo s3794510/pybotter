@@ -39,7 +39,6 @@ class PyBot:
 
     def runmainloop(self, actions):
         while(self.bothandler.is_running):
-    
             # get an updated image of the game
             self.bothandler.update_screenshot(self.debug)
 
@@ -105,3 +104,6 @@ class PyBot:
     
     def wait(self, duration):
         time.sleep(duration)
+
+    def save_current_screenshot_PNG(self, filename=None):
+        self.bothandler.save_current_screenshot(filename)
