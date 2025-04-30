@@ -86,9 +86,8 @@ class BotHandler:
     def check_needle_fit_haystack(self, needle_name):
         needle = self.images.get(needle_name)
         if (needle.needle_h > self.window_handler.h) or (needle.needle_w > self.window_handler.w) :
-            msg = """Needle image is bigger than the target window. needle_w = """ + needle.needle_w.__str__() + " | window_w = " + self.window_handler.w.__str__() + " | needle_h = " + needle.needle_h.__str__() + " | window_h = " + self.window_handler.h.__str__()
-            raise Exception(msg)
             msg = """[WARNING]: Needle image is bigger than the target window. needle_w = """ + needle.needle_w.__str__() + " | window_w = " + self.window_handler.w.__str__() + " | needle_h = " + needle.needle_h.__str__() + " | window_h = " + self.window_handler.h.__str__()
+            print(msg)
         return True
 
     def add_image(self, name, path):
@@ -239,6 +238,7 @@ class BotHandler:
                 self.leftclick(x,y, 0)
         
     def save_current_screenshot(self, filename=None):
+        """
 
 class PropagatingThread(threading.Thread):
     def run(self):
