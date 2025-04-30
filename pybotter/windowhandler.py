@@ -39,7 +39,7 @@ class WindowHandler:
         w, h = self.w, self.h
 
         # Validate window handle
-        if not win32gui.IsWindow(self.hwnd):
+        if not win32gui.IsWindow(self.hwnd) or self.hwnd == win32gui.GetDesktopWindow():
             print("[INFO] Window handle invalid. Trying to find the window again...")
             self.find_window()
             if not self.hwnd or not win32gui.IsWindow(self.hwnd):
