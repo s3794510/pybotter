@@ -19,7 +19,7 @@ class WindowHandler:
     def get_window_size(self):
         # Get the client area size (exclude borders, title bar)
         if (self.hwnd is None or self.hwnd == 0):
-            return 100, 100
+            self.hwnd = win32gui.GetDesktopWindow()
         rect = win32gui.GetClientRect(self.hwnd)
         w = rect[2] - rect[0]
         h = rect[3] - rect[1]
@@ -43,6 +43,7 @@ class WindowHandler:
             print("[INFO] Window handle invalid. Trying to find the window again...")
             self.find_window()
             if not self.hwnd or not win32gui.IsWindow(self.hwnd):
+                self.get_window_size()
                 print("[ERROR] Window not found. Returning black screen.")
                 return np.zeros((h, w, 3), dtype=np.uint8)
         self.get_window_size()

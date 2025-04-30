@@ -5,6 +5,8 @@ import keyboard, cv2, os
 from .vision import Vision
 from .windowhandler import WindowHandler
 from .soundhandler import SoundHandler
+import ctypes
+from datetime import datetime
 
 class BotHandler:
     # http://www.kbdedit.com/manual/low_level_vk_list.html
@@ -86,6 +88,7 @@ class BotHandler:
         if (needle.needle_h > self.window_handler.h) or (needle.needle_w > self.window_handler.w) :
             msg = """Needle image is bigger than the target window. needle_w = """ + needle.needle_w.__str__() + " | window_w = " + self.window_handler.w.__str__() + " | needle_h = " + needle.needle_h.__str__() + " | window_h = " + self.window_handler.h.__str__()
             raise Exception(msg)
+            msg = """[WARNING]: Needle image is bigger than the target window. needle_w = """ + needle.needle_w.__str__() + " | window_w = " + self.window_handler.w.__str__() + " | needle_h = " + needle.needle_h.__str__() + " | window_h = " + self.window_handler.h.__str__()
         return True
 
     def add_image(self, name, path):
@@ -235,6 +238,7 @@ class BotHandler:
                 x,y = points[0]
                 self.leftclick(x,y, 0)
         
+    def save_current_screenshot(self, filename=None):
 
 class PropagatingThread(threading.Thread):
     def run(self):
