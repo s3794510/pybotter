@@ -11,3 +11,4 @@ simplerun.py
 trash
 .venv/*
 *.spec
+*TEST*.*
