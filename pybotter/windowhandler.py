@@ -4,6 +4,7 @@ import numpy as np
 import win32gui, win32ui, win32con
 import cv2
 import ctypes
+from datetime import datetime
 
 class WindowHandler:
 
@@ -14,7 +15,7 @@ class WindowHandler:
         self.find_window()
         self.w, self.h = -1, -1
         self.get_window_size()
-        print("[INFO] Window size is: ", self.w, ', ', self.h)
+        self.log("[INFO]", f"Window size is: {self.w}, {self.h}")
 
     def get_window_size(self):
         # Get the client area size (exclude borders, title bar)
@@ -24,7 +25,7 @@ class WindowHandler:
         w = rect[2] - rect[0]
         h = rect[3] - rect[1]
         if w != self.w or h != self.h:
-            print("[INFO] Window size is changed to: ", w, ', ', h)
+            self.log("[INFO]", f"Window size is changed to: {w}, {h}")
         self.w, self.h = w, h
 
     def find_window(self):
@@ -40,15 +41,15 @@ class WindowHandler:
 
         # Validate window handle
         if not win32gui.IsWindow(self.hwnd) or self.hwnd == win32gui.GetDesktopWindow():
-            print("[INFO] Window handle invalid. Trying to find the window again...")
+            self.log("[INFO]", "Window handle invalid. Trying to find the window again...")
             self.find_window()
             if not self.hwnd or not win32gui.IsWindow(self.hwnd):
                 self.get_window_size()
-                print("[ERROR] Window not found. Returning black screen.")
+                self.log("[ERROR]", "Window not found. Returning black screen.")
                 return np.zeros((h, w, 3), dtype=np.uint8)
         self.get_window_size()
         if w == 0 or h == 0:
-            print("[WARNING] The target window is not present.")
+            self.log("[WARNING]", "The target window is not present.")
             return None
         hwnd = self.hwnd
 
@@ -72,7 +73,7 @@ class WindowHandler:
             result = ctypes.windll.user32.PrintWindow(hwnd, memDC.GetSafeHdc(), 0x2)
 
             if result != 1:
-                print("[WARNING] PrintWindow failed. Returning black screen.")
+                self.log("[WARNING]", "PrintWindow failed. Returning black screen.")
                 img = np.zeros((h, w, 3), dtype=np.uint8)
             else:
                 # Convert the bitmap to numpy array
@@ -97,7 +98,7 @@ class WindowHandler:
             win32gui.DeleteObject(bmp.GetHandle())
 
         except Exception as e:
-            print(f"[ERROR] Screenshot capture failed: {e}")
+            self.log("[ERROR]", f"Screenshot capture failed: {e}")
             img = np.zeros((h, w, 3), dtype=np.uint8)
 
         if 'capture' in debug:
@@ -149,3 +150,12 @@ class WindowHandler:
         self.w = w
         self.h = h
         return 0
+    
+    def log(self, level, message):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # only add brackets if they're not already there
+        if level.startswith('[') and level.endswith(']'):
+            level_str = level
+        else:
+            level_str = f'[{level}]'
+        print(f"[{timestamp}] {level_str} {message}")

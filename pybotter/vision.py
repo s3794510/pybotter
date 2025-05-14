@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+from datetime import datetime
 
 class Vision:
 
@@ -36,7 +37,7 @@ class Vision:
         """
         # Optional conversion or enforce both haystack and needle as grayscale
         if haystack_img is None:
-            print("[Warning] Can't find needle without haystack")
+            self.log("[WARNING]", "Can't find needle without haystack")
             return None
         if convert_mode:
             haystack = cv2.cvtColor(haystack_img, convert_mode)
@@ -52,7 +53,7 @@ class Vision:
 
         # Safety check for template size
         if haystack.shape[0] < needle.shape[0] or haystack.shape[1] < needle.shape[1]:
-            print("Error: Needle image is larger than haystack.")
+            self.log("[ERROR]", "Needle image is larger than haystack.")
             return []
 
         # Now safe to match
@@ -85,3 +86,12 @@ class Vision:
         # Optional scaling
         points = [(int(x / 1.2234), int(y / 1.2234)) for x, y in points]
         return points
+
+    def log(self, level, message):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # only add brackets if they're not already there
+        if level.startswith('[') and level.endswith(']'):
+            level_str = level
+        else:
+            level_str = f'[{level}]'
+        print(f"[{timestamp}] {level_str} {message}")

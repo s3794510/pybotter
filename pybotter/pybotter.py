@@ -4,7 +4,7 @@ import winsound, time, threading
 
 class PyBot:
     
-    def __init__(self, window_name, sleeptime = 0, debug = None):
+    def __init__(self, window_name, sleeptime = 0, mode = None, debug = None):
         '''
         window_name (str): name of the target window
         sleeptime (int): amount of seconds wait after each cycle
@@ -14,6 +14,7 @@ class PyBot:
             self.debug = ''
         else:
             self.debug = debug
+        self.mode = mode
         self.window_name = window_name
         self.sleeptime = sleeptime
         self.bothandler = BotHandler(window_name, self.debug)
@@ -22,20 +23,30 @@ class PyBot:
 
     def mainloop(self, func):
         def run():
-            # Start program text
-            print("""Hold Ctrl + ESC to stop
-            Hold Ctrl + P to pause/unpause.
-            Hold Ctrl + F to show FPS
-            Program is running.
-            """)
+            # Before Main Loop
+            self.before_mainloop()
 
-            # Run the bot
+            # Run the bot (Main Loop)
             return_code = self.runmainloop(func)
 
-            # After done running
+            # After Main Loop
             print('Program is closed.')
             return return_code
         return run
+
+    def before_mainloop(self):
+        if self.mode:
+            if 'awake' in self.mode:
+                self.bothandler.start_keep_awake_thread()
+                print("[INFO] Keeping the PC awake")
+
+        # Start program text
+        print("""Hold Ctrl + ESC to stop
+        Hold Ctrl + P to pause/unpause.
+        Hold Ctrl + F to show FPS
+        Program is running.
+        """)
+
 
     def runmainloop(self, actions):
         while(self.bothandler.is_running):
@@ -71,8 +82,11 @@ class PyBot:
         self.bothandler.show_screenshot()
 
 
-    def left_click(self, x, y, duration):
-        self.bothandler.leftclick(x, y, duration)
+    def left_click(self, x, y, duration, mode="default"):
+        if mode == "interception" or mode == "i":
+            self.bothandler.interception_click(x, y, duration)
+        else:
+            self.bothandler.leftclick(x, y, duration)
 
     def key_press(self, key, duration):
         return self.bothandler.keyboard_press(key, duration)

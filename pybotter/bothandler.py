@@ -63,7 +63,7 @@ class BotHandler:
         self.soundhandler = SoundHandler(self.soundpath)
         self.is_running = True
         self.is_pause = False
-        self.loop_time = time()
+        self.loop_time = time.time()
         self.fps = -1
         self.screenshot = None
         self.debug = debug
@@ -86,8 +86,7 @@ class BotHandler:
     def check_needle_fit_haystack(self, needle_name):
         needle = self.images.get(needle_name)
         if (needle.needle_h > self.window_handler.h) or (needle.needle_w > self.window_handler.w) :
-            msg = """[WARNING]: Needle image is bigger than the target window. needle_w = """ + needle.needle_w.__str__() + " | window_w = " + self.window_handler.w.__str__() + " | needle_h = " + needle.needle_h.__str__() + " | window_h = " + self.window_handler.h.__str__()
-            print(msg)
+            self.log("[WARNING]",  f"Needle image is bigger than the target window. needle_w = {needle.needle_w} | window_w = {self.window_handler.w} | needle_h = {needle.needle_h} | window_h = {self.window_handler.h}")
         return True
 
     def add_image(self, name, path):
@@ -109,7 +108,7 @@ class BotHandler:
             raise(Exception("Needle image not found, actual Type:",typeneedle))
         if self.check_needle_fit_haystack(name): 
             return needle.find(self.screenshot, threshold, convert_mode= convert,debug_mode=self.debug)
-        raise Exception("Unexpected Error")
+        raise Exception("UNEXPECTED ERROR")
 
     def keyboard_press(self, key, duration):
         keycode = self.keymap.get(key.upper())
@@ -135,8 +134,8 @@ class BotHandler:
         if cv2.waitKey(1) == ord('q'):
             self.exit()
         # calcualte times processed each second
-        self.fps = 1 / (time() - self.loop_time)
-        self.loop_time = time()
+        self.fps = 1 / (time.time() - self.loop_time)
+        self.loop_time = time.time()
 
 
     def init(self):
@@ -224,18 +223,6 @@ class BotHandler:
 
     def update_screenshot(self, debug = None):
         self.screenshot = self.window_handler.get_screenshot(debug)
-
-
-    def __actions__(self): # PUT BOT ACTIONS HERE
-        points = self.area_img.find(self.screenshot, 0.8, self.debug, cv2.COLOR_BGR2GRAY)
-        if not (len(points)):
-            self.keyboard_press('v', 0)
-            pass
-        if (len(points)):
-            points = self.teleport_img.find(self.screenshot, 0.95, self.debug, cv2.COLOR_BGR2GRAY)
-            if (len(points)):
-                x,y = points[0]
-                self.leftclick(x,y, 0)
         
     def save_current_screenshot(self, filename=None):
         """
@@ -257,7 +244,3 @@ class PropagatingThread(threading.Thread):
         if self.exc:
             raise self.exc
         return self.ret
-'490, 294'
-'621, 405'
-
-'131, 116'
