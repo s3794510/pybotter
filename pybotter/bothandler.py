@@ -226,6 +226,32 @@ class BotHandler:
         
     def save_current_screenshot(self, filename=None):
         """
+        Saves the current screenshot stored in self.screenshot to a file.
+        """
+        if self.screenshot is None:
+            self.log("[ERROR]", "No screenshot to save.")
+            return
+
+        # Ensure a proper filename
+        if filename is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'screenshot_{timestamp}.png'
+        elif not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+            filename += '.png'
+
+        # Save path in 'screenshots' folder next to script
+        save_dir = os.path.join(os.getcwd(), "screenshots")
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, filename)
+
+        try:
+            success = cv2.imwrite(save_path, self.screenshot)
+            if success:
+                self.log("[ERROR]", "Screenshot saved to {save_path}")
+            else:
+                self.log("[ERROR]", "cv2.imwrite failed to save the file.")
+        except Exception as e:
+            self.log("[ERROR]", f"Failed to save screenshot: {e}")
 
 class PropagatingThread(threading.Thread):
     def run(self):
