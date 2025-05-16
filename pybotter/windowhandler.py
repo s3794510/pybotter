@@ -5,7 +5,9 @@ import win32gui, win32ui, win32con
 import cv2
 import ctypes
 from datetime import datetime
+from .utils import *
 
+@creation_log
 class WindowHandler:
 
     # constructor

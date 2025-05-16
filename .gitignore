@@ -1,4 +1,4 @@
-temp/*
+TEMP/*
 pybot.egg-info/*
 src/__pycache__/*
 __pycache__/*
@@ -12,3 +12,4 @@ trash
 .venv/*
 *.spec
 *TEST*.*
+*.txt

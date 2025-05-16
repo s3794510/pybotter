@@ -1,7 +1,9 @@
 from .bothandler import BotHandler
 from .windowhandler import WindowHandler
 import winsound, time, threading
+from .utils import *
 
+@creation_log
 class PyBot:
     
     def __init__(self, window_name, sleeptime = 0, mode = None, debug = None):
@@ -19,7 +21,7 @@ class PyBot:
         self.sleeptime = sleeptime
         self.bothandler = BotHandler(window_name, self.debug)
         self.alarm_lock = threading.Lock()
-        print("Object PyBot created, Window name: ", self.window_name)
+        log("INFO", f"Object PyBot created, Window name: {self.window_name}")
 
     def mainloop(self, func):
         def run():
@@ -30,7 +32,7 @@ class PyBot:
             return_code = self.runmainloop(func)
 
             # After Main Loop
-            print('Program is closed.')
+            log("INFO", "Program is closed.")
             return return_code
         return run
 
@@ -38,7 +40,7 @@ class PyBot:
         if self.mode:
             if 'awake' in self.mode:
                 self.bothandler.start_keep_awake_thread()
-                print("[INFO] Keeping the PC awake")
+                log("INFO", "Keeping the PC awake.")
 
         # Start program text
         print("""Hold Ctrl + ESC to stop

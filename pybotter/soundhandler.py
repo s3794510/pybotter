@@ -1,5 +1,7 @@
 import threading
+from .utils import *
 
+@creation_log
 class SoundHandler:
 
     def __init__(self, sound_folder) -> None:

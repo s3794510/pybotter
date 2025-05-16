@@ -7,8 +7,15 @@ from .windowhandler import WindowHandler
 from .soundhandler import SoundHandler
 import ctypes
 from datetime import datetime
+import ctypes
+import time
+from .utils import *
 
+@creation_log
 class BotHandler:
+    
+    #################################################
+    #################################################
     # http://www.kbdedit.com/manual/low_level_vk_list.html
     keymap = {
     '0': 0x30,
@@ -53,7 +60,9 @@ class BotHandler:
     }
    
     
-    def __init__(self, window_name, debug = None, mute = None) -> None:
+    def __init__(self, window_name, debug = None, mute = None, mode = None) -> None:
+        if mode and "in" in mode:
+            self.im = self.InterceptionMouse(hold_duration=0.05)
         self.window_name = window_name
         self.soundpath = os.path.join(os.path.dirname(__file__),'sound')
         self.hwnd = None
@@ -86,7 +95,7 @@ class BotHandler:
     def check_needle_fit_haystack(self, needle_name):
         needle = self.images.get(needle_name)
         if (needle.needle_h > self.window_handler.h) or (needle.needle_w > self.window_handler.w) :
-            self.log("[WARNING]",  f"Needle image is bigger than the target window. needle_w = {needle.needle_w} | window_w = {self.window_handler.w} | needle_h = {needle.needle_h} | window_h = {self.window_handler.h}")
+            log("[WARNING]",  f"Needle image is bigger than the target window. needle_w = {needle.needle_w} | window_w = {self.window_handler.w} | needle_h = {needle.needle_h} | window_h = {self.window_handler.h}")
         return True
 
     def add_image(self, name, path):
@@ -117,12 +126,8 @@ class BotHandler:
         win32api.PostMessage(self.hwnd, win32con.WM_KEYUP, keycode, 0)
         return 0
 
-    def leftclick(self, x, y, duration):
-        lParam = win32api.MAKELONG(x, y)
-        win32gui.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, lParam)
-        win32gui.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lParam)
-        sleep(duration)
-        win32gui.SendMessage(self.hwnd, win32con.WM_LBUTTONUP, win32con.MK_LBUTTON, lParam)
+    def leftclick(self, x, y, duration=0.1):
+        pass
 
 
     def flow_handle(self, sleep_time = 0, debug = 'regular'):
@@ -229,7 +234,7 @@ class BotHandler:
         Saves the current screenshot stored in self.screenshot to a file.
         """
         if self.screenshot is None:
-            self.log("[ERROR]", "No screenshot to save.")
+            log("[ERROR]", "No screenshot to save.")
             return
 
         # Ensure a proper filename
@@ -247,12 +252,177 @@ class BotHandler:
         try:
             success = cv2.imwrite(save_path, self.screenshot)
             if success:
-                self.log("[ERROR]", "Screenshot saved to {save_path}")
+                log("[ERROR]", "Screenshot saved to {save_path}")
             else:
-                self.log("[ERROR]", "cv2.imwrite failed to save the file.")
+                log("[ERROR]", "cv2.imwrite failed to save the file.")
         except Exception as e:
-            self.log("[ERROR]", f"Failed to save screenshot: {e}")
+            log("[ERROR]", f"Failed to save screenshot: {e}")
 
+    def interception_click(self, x=None, y=None, duration=0):
+        """
+        If x and y are given: move by (x,y) relative to current cursor.
+        Then perform a left-click, holding for `duration` seconds.
+        """
+        # optional relative move
+        self.im.click_at(self.hwnd, x=x,y=y,duration = 0.1)
+
+    def keep_awake(self):
+        ES_CONTINUOUS = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        ES_DISPLAY_REQUIRED = 0x00000002
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
+
+        while True:
+            time.sleep(30)  # Still needs a loop to hold the execution state
+
+    def start_keep_awake_thread(self):
+        t = threading.Thread(target=self.keep_awake, daemon=True)
+        t.start()
+
+    #############################
+    #############################  
+    @creation_log
+    class InterceptionMouse:
+        # Constants from interception.h
+        FILTER_MOUSE_ALL              = 0xFFFF
+        MOUSE_LEFT_BUTTON_DOWN        = 0x0002
+        MOUSE_LEFT_BUTTON_UP          = 0x0004
+
+        # Load the DLL (must be on PATH or alongside script)
+        _dll_name = "interception.dll"
+        _dll_path = os.path.join(os.path.dirname(__file__), _dll_name)
+        if not os.path.exists(_dll_path):
+            raise FileNotFoundError(f"Could not find {_dll_name} at {_dll_path}")
+        _lib = ctypes.WinDLL(_dll_path)
+
+        # Type aliases
+        _Context = ctypes.c_void_p
+        _Device  = ctypes.c_int
+
+        ######## MouseStroke struct (matches C definition)
+        class MouseStroke(ctypes.Structure):
+            _fields_ = [
+                ("state",   ctypes.c_ushort),
+                ("flags",   ctypes.c_ushort),
+                ("rolling", ctypes.c_uint),
+                ("x",       ctypes.c_int),
+                ("y",       ctypes.c_int),
+            ]
+
+        # Function prototypes
+        _lib.interception_create_context.restype = _Context
+        _lib.interception_destroy_context.argtypes = (_Context,)
+        _lib.interception_destroy_context.restype  = None
+
+        _PredFn = ctypes.CFUNCTYPE(ctypes.c_int, _Device)
+        _interception_is_mouse = _PredFn(("interception_is_mouse", _lib))
+
+        _lib.interception_set_filter.argtypes = (_Context, _PredFn, ctypes.c_uint)
+        _lib.interception_set_filter.restype  = None
+
+        _lib.interception_wait.argtypes = (_Context,)
+        _lib.interception_wait.restype  = _Device
+
+        _lib.interception_receive.argtypes = (_Context, _Device, ctypes.c_void_p, ctypes.c_int)
+        _lib.interception_receive.restype  = ctypes.c_int
+
+        _lib.interception_send.argtypes = (_Context, _Device, ctypes.c_void_p, ctypes.c_int)
+        _lib.interception_send.restype  = ctypes.c_int
+
+        def __init__(self, hold_duration: float = 0.05):
+            """
+            hold_duration: how long to hold the button down on click()
+            """
+            # Context for intercepting and forwarding real mouse events
+            self._hook_ctx = self._lib.interception_create_context()
+            self._lib.interception_set_filter(
+                self._hook_ctx,
+                self._interception_is_mouse,
+                self.FILTER_MOUSE_ALL
+            )
+            # Context for injecting synthetic events (no filter)
+            self._send_ctx = self._lib.interception_create_context()
+
+            # Get the first mouse device ID
+            self._dev = self._lib.interception_wait(self._hook_ctx)
+            self.hold_duration = hold_duration
+
+            # Start background thread to forward real mouse events
+            self._stop_event = threading.Event()
+            self._thread = threading.Thread(target=self._forward_loop, daemon=True)
+            self._thread.start()
+
+        def _forward_loop(self):
+            """Read real hardware events and forward them immediately."""
+            stroke = self.MouseStroke()
+            size = ctypes.sizeof(stroke)
+            while not self._stop_event.is_set():
+                dev = self._lib.interception_wait(self._hook_ctx)
+                if dev is None:
+                    continue
+                if self._lib.interception_receive(self._hook_ctx, dev, ctypes.byref(stroke), size) > 0:
+                    self._lib.interception_send(self._hook_ctx, dev, ctypes.byref(stroke), size)
+
+        def click(self, duration: float = None):
+            """
+            Send a left-button click (down + up) at the current cursor position.
+            duration: how long to hold the button down (in seconds)
+            """
+            d = duration if duration is not None else self.hold_duration
+            down = self.MouseStroke(
+                state=self.MOUSE_LEFT_BUTTON_DOWN,
+                flags=0, rolling=0, x=0, y=0
+            )
+            self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(down), ctypes.sizeof(down))
+            time.sleep(d)
+            up = self.MouseStroke(
+                state=self.MOUSE_LEFT_BUTTON_UP,
+                flags=0, rolling=0, x=0, y=0
+            )
+            self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(up), ctypes.sizeof(up))
+
+        def move(self, dx: int, dy: int):
+            """
+            Send a relative mouse movement.
+            dx, dy: signed offsets from current position
+            """
+            mv = self.MouseStroke(
+                state=0, flags=0, rolling=0, x=dx, y=dy
+            )
+            self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(mv), ctypes.sizeof(mv))
+
+        def click_and_move(self, dx: int, dy: int, duration: float = None):
+            """
+            Move by (dx, dy) then click.
+            """
+            self.move(dx, dy)
+            self.click(duration)
+
+        def click_at(self, hwnd, x, y, duration: float = None):
+            """
+            Send a click instantly to screen coords (x, y) on the given window handle
+            without moving the real cursor.
+            """
+            # convert screen -> client coords
+            cx, cy = win32gui.ScreenToClient(hwnd, (x, y))
+            lparam = win32api.MAKELONG(cx, cy)
+            # send click messages directly to window
+            win32gui.SendMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
+            win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
+            time.sleep(duration if duration is not None else self.hold_duration)
+            win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+
+        def __del__(self):
+            # Stop forwarding thread and destroy contexts
+            try:
+                self._stop_event.set()
+                if self._thread.is_alive():
+                    self._thread.join(timeout=0.1)
+                self._lib.interception_destroy_context(self._hook_ctx)
+                self._lib.interception_destroy_context(self._send_ctx)
+            except Exception:
+                pass
+@creation_log
 class PropagatingThread(threading.Thread):
     def run(self):
         self.exc = None
