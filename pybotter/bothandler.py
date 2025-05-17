@@ -61,8 +61,8 @@ class BotHandler:
    
     
     def __init__(self, window_name, debug = None, mute = None, mode = None) -> None:
-        if mode and "in" in mode:
-            self.im = self.InterceptionMouse(hold_duration=0.05)
+       
+        # MAIN FIELDS
         self.window_name = window_name
         self.soundpath = os.path.join(os.path.dirname(__file__),'sound')
         self.hwnd = None
@@ -77,6 +77,20 @@ class BotHandler:
         self.screenshot = None
         self.debug = debug
         self.images = {str:Vision}
+        
+        # SPECIAL MODE INTERCEPTION
+        if mode and "in" in mode:
+            self.im = self.InterceptionMouse(hold_duration=0.05)
+            self._exit_key_combos = [['esc', 'control'], ['ctrl', 'space']]
+        else:
+            self._exit_key_combos = [['esc', 'control']]
+
+        # INIT THREADS
+        self.pause_handle_thread()
+        self.exit_handle_thread(self._exit_key_combos)
+        self.show_fps_handle_thread()
+
+        self.soundhandler.sound_start()
 
     def get_window_handle(self):
         if self.window_name is None:
@@ -143,12 +157,13 @@ class BotHandler:
         self.loop_time = time.time()
 
 
-    def init(self):
-        self.soundhandler.sound_start()
-        # init threads
-        self.pause_handle_thread()
-        self.exit_handle_thread()
-        self.show_fps_handle_thread()
+    # def init(self):
+    #     self.soundhandler.sound_start()
+    #     # init threads
+    #     self.pause_handle_thread()
+    #     self._exit_key_combos = [['esc', 'control'], ['ctrl', 'space']]
+    #     self.exit_handle_thread(self._exit_key_combos)
+    #     self.show_fps_handle_thread()
 
         # initialize the Vision class
         #self.area_img = Vision('areasxx.jpg')
@@ -160,7 +175,8 @@ class BotHandler:
     def destroyAllWindows(self):
         cv2.destroyAllWindows()
         return 0
-    
+
+##############################
     def pause(self):
         self.is_pause = True
         print("Paused.\n")
@@ -172,16 +188,9 @@ class BotHandler:
         self.soundhandler.sound_unpause()
         pass
 
-    def exit(self):
-        self.is_running = False
-        self.soundhandler.sound_exit()
-        pass
-
-    
     def pause_handle_thread(self):
         thread = threading.Thread(target=self.pause_handle, args=())
         thread.start()
-
 
     def pause_handle(self, sleep_time = 0.05):
         done = True
@@ -201,19 +210,31 @@ class BotHandler:
                     sleep(0.5)
                     done = True
                     
-                
-
-    def exit_handle_thread(self):
-        thread = threading.Thread(target=self.exit_handle, args= ())
+##############################
+    def exit_handle_thread(self, key_combinations):
+        """
+        Starts a thread to watch for any of the key combinations.
+        """
+        self._exit_key_combos = [set(combo) for combo in key_combinations]
+        self.is_running = True
+        thread = threading.Thread(target=self.exit_handle, daemon=True)
         thread.start()
-    
-    def exit_handle(self, sleep_time = 0.05):
+
+    def exit_handle(self):
+        """
+        Monitors key combinations and exits when any of them is detected.
+        """
         while self.is_running:
-            sleep(sleep_time)
-            if keyboard.is_pressed('esc') and keyboard.is_pressed('control'):
-                self.exit()
+            for combo in self._exit_key_combos:
+                if all(keyboard.is_pressed(key) for key in combo):
+                    self.exit()
 
+    def exit(self):
+        self.is_running = False
+        self.soundhandler.sound_exit()
+        pass
 
+#####################################
     def show_fps_handle_thread(self):
         thread = threading.Thread(target=self.show_fps_handle, args= ()) 
         thread.start()
@@ -226,6 +247,7 @@ class BotHandler:
                 print("Threads: ", threading.active_count())
                 sleep(1)
 
+#####################################
     def update_screenshot(self, debug = None):
         self.screenshot = self.window_handler.get_screenshot(debug)
         
@@ -283,77 +305,73 @@ class BotHandler:
     #############################  
     @creation_log
     class InterceptionMouse:
-        # Constants from interception.h
-        FILTER_MOUSE_ALL              = 0xFFFF
-        MOUSE_LEFT_BUTTON_DOWN        = 0x0002
-        MOUSE_LEFT_BUTTON_UP          = 0x0004
+        FILTER_MOUSE_ALL = 0xFFFF
+        MOUSE_LEFT_BUTTON_DOWN = 0x0002
+        MOUSE_LEFT_BUTTON_UP = 0x0004
 
-        # Load the DLL (must be on PATH or alongside script)
         _dll_name = "interception.dll"
         _dll_path = os.path.join(os.path.dirname(__file__), _dll_name)
         if not os.path.exists(_dll_path):
             raise FileNotFoundError(f"Could not find {_dll_name} at {_dll_path}")
         _lib = ctypes.WinDLL(_dll_path)
 
-        # Type aliases
         _Context = ctypes.c_void_p
-        _Device  = ctypes.c_int
+        _Device = ctypes.c_int
 
-        ######## MouseStroke struct (matches C definition)
+        @creation_log
         class MouseStroke(ctypes.Structure):
             _fields_ = [
-                ("state",   ctypes.c_ushort),
-                ("flags",   ctypes.c_ushort),
+                ("state", ctypes.c_ushort),
+                ("flags", ctypes.c_ushort),
                 ("rolling", ctypes.c_uint),
-                ("x",       ctypes.c_int),
-                ("y",       ctypes.c_int),
+                ("x", ctypes.c_int),
+                ("y", ctypes.c_int),
             ]
 
-        # Function prototypes
         _lib.interception_create_context.restype = _Context
         _lib.interception_destroy_context.argtypes = (_Context,)
-        _lib.interception_destroy_context.restype  = None
+        _lib.interception_destroy_context.restype = None
 
         _PredFn = ctypes.CFUNCTYPE(ctypes.c_int, _Device)
         _interception_is_mouse = _PredFn(("interception_is_mouse", _lib))
 
         _lib.interception_set_filter.argtypes = (_Context, _PredFn, ctypes.c_uint)
-        _lib.interception_set_filter.restype  = None
+        _lib.interception_set_filter.restype = None
 
         _lib.interception_wait.argtypes = (_Context,)
-        _lib.interception_wait.restype  = _Device
+        _lib.interception_wait.restype = _Device
 
         _lib.interception_receive.argtypes = (_Context, _Device, ctypes.c_void_p, ctypes.c_int)
-        _lib.interception_receive.restype  = ctypes.c_int
+        _lib.interception_receive.restype = ctypes.c_int
 
         _lib.interception_send.argtypes = (_Context, _Device, ctypes.c_void_p, ctypes.c_int)
-        _lib.interception_send.restype  = ctypes.c_int
+        _lib.interception_send.restype = ctypes.c_int
 
-        def __init__(self, hold_duration: float = 0.05):
-            """
-            hold_duration: how long to hold the button down on click()
-            """
-            # Context for intercepting and forwarding real mouse events
-            self._hook_ctx = self._lib.interception_create_context()
-            self._lib.interception_set_filter(
-                self._hook_ctx,
-                self._interception_is_mouse,
-                self.FILTER_MOUSE_ALL
-            )
-            # Context for injecting synthetic events (no filter)
+        def __init__(self, hold_duration: float = 0.05, forward_mouse: bool = False):
             self._send_ctx = self._lib.interception_create_context()
-
-            # Get the first mouse device ID
-            self._dev = self._lib.interception_wait(self._hook_ctx)
             self.hold_duration = hold_duration
+            self._dev = None
+            self._forward_mouse = forward_mouse
 
-            # Start background thread to forward real mouse events
-            self._stop_event = threading.Event()
-            self._thread = threading.Thread(target=self._forward_loop, daemon=True)
-            self._thread.start()
+            if forward_mouse:
+                self._hook_ctx = self._lib.interception_create_context()
+                self._lib.interception_set_filter(
+                    self._hook_ctx,
+                    self._interception_is_mouse,
+                    self.FILTER_MOUSE_ALL
+                )
+                self._dev = self._lib.interception_wait(self._hook_ctx)
+                self._stop_event = threading.Event()
+                self._thread = threading.Thread(target=self._forward_loop, daemon=True)
+                self._thread.start()
+            else:
+                # Use dummy device ID (0) or configure as needed for send-only use
+                self._dev = 0
+                self._hook_ctx = None
+                self._thread = None
+                self._stop_event = None
 
         def _forward_loop(self):
-            """Read real hardware events and forward them immediately."""
             stroke = self.MouseStroke()
             size = ctypes.sizeof(stroke)
             while not self._stop_event.is_set():
@@ -364,64 +382,44 @@ class BotHandler:
                     self._lib.interception_send(self._hook_ctx, dev, ctypes.byref(stroke), size)
 
         def click(self, duration: float = None):
-            """
-            Send a left-button click (down + up) at the current cursor position.
-            duration: how long to hold the button down (in seconds)
-            """
             d = duration if duration is not None else self.hold_duration
-            down = self.MouseStroke(
-                state=self.MOUSE_LEFT_BUTTON_DOWN,
-                flags=0, rolling=0, x=0, y=0
-            )
+            down = self.MouseStroke(state=self.MOUSE_LEFT_BUTTON_DOWN, flags=0, rolling=0, x=0, y=0)
+            up   = self.MouseStroke(state=self.MOUSE_LEFT_BUTTON_UP,   flags=0, rolling=0, x=0, y=0)
+
             self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(down), ctypes.sizeof(down))
             time.sleep(d)
-            up = self.MouseStroke(
-                state=self.MOUSE_LEFT_BUTTON_UP,
-                flags=0, rolling=0, x=0, y=0
-            )
             self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(up), ctypes.sizeof(up))
 
         def move(self, dx: int, dy: int):
-            """
-            Send a relative mouse movement.
-            dx, dy: signed offsets from current position
-            """
-            mv = self.MouseStroke(
-                state=0, flags=0, rolling=0, x=dx, y=dy
-            )
+            mv = self.MouseStroke(state=0, flags=0, rolling=0, x=dx, y=dy)
             self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(mv), ctypes.sizeof(mv))
 
         def click_and_move(self, dx: int, dy: int, duration: float = None):
-            """
-            Move by (dx, dy) then click.
-            """
             self.move(dx, dy)
             self.click(duration)
 
         def click_at(self, hwnd, x, y, duration: float = None):
-            """
-            Send a click instantly to screen coords (x, y) on the given window handle
-            without moving the real cursor.
-            """
-            # convert screen -> client coords
             cx, cy = win32gui.ScreenToClient(hwnd, (x, y))
             lparam = win32api.MAKELONG(cx, cy)
-            # send click messages directly to window
             win32gui.SendMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
             win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
             time.sleep(duration if duration is not None else self.hold_duration)
             win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
 
         def __del__(self):
-            # Stop forwarding thread and destroy contexts
             try:
-                self._stop_event.set()
-                if self._thread.is_alive():
-                    self._thread.join(timeout=0.1)
-                self._lib.interception_destroy_context(self._hook_ctx)
-                self._lib.interception_destroy_context(self._send_ctx)
+                if self._forward_mouse:
+                    self._stop_event.set()
+                    if self._thread and self._thread.is_alive():
+                        self._thread.join(timeout=0.1)
+                    self._lib.interception_destroy_context(self._hook_ctx)
+
+                if self._send_ctx:
+                    self._lib.interception_destroy_context(self._send_ctx)
             except Exception:
                 pass
+
+############################
 @creation_log
 class PropagatingThread(threading.Thread):
     def run(self):

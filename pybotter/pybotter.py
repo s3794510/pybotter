@@ -19,7 +19,7 @@ class PyBot:
         self.mode = mode
         self.window_name = window_name
         self.sleeptime = sleeptime
-        self.bothandler = BotHandler(window_name, self.debug)
+        self.bothandler = BotHandler(window_name, self.debug, mode = mode)
         self.alarm_lock = threading.Lock()
         log("INFO", f"Object PyBot created, Window name: {self.window_name}")
 
@@ -65,7 +65,7 @@ class PyBot:
 
     def variables(self, func):
         def run(*args, **kwargs):
-            self.bothandler.init()
+            #self.bothandler.init()
             return_code = func(*args, **kwargs)
             return return_code
         return run

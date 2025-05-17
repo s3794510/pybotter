@@ -13,3 +13,4 @@ trash
 *.spec
 *TEST*.*
 *.txt
+*.bat
