@@ -192,26 +192,25 @@ class BotHandler:
         pass
 
     def pause_handle_thread(self):
-        thread = threading.Thread(target=self.pause_handle, args=())
+        thread = threading.Thread(target=self.pause_handle, daemon=True)
         thread.start()
 
-    def pause_handle(self, sleep_time = 0.05):
-        done = True
+    def pause_handle(self, sleep_time=0.5):
+        key_combo = lambda: keyboard.is_pressed('p') and keyboard.is_pressed('control')
+        last_trigger_time = 0
+        debounce_interval = 1  # Prevents repeated toggle
+
         while self.is_running:
-            sleep(sleep_time)
-            if done:
-                if not self.is_pause and keyboard.is_pressed('p') and keyboard.is_pressed('control'):
-                    done = False
-                    self.pause()
-                    sleep(0.5)
-                    done = True
-                    
-            if done:
-                if self.is_pause and keyboard.is_pressed('p') and keyboard.is_pressed('control'):   
-                    done = False   
-                    self.unpause()
-                    sleep(0.5)
-                    done = True
+            if key_combo():
+                now = time.time()
+                if now - last_trigger_time >= debounce_interval:
+                    if self.is_pause:
+                        self.unpause()
+                    else:
+                        self.pause()
+                    last_trigger_time = now
+
+            time.sleep(sleep_time)
                     
 ##############################
     def exit_handle_thread(self, key_combinations):
