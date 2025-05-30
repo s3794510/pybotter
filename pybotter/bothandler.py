@@ -10,7 +10,7 @@ from datetime import datetime
 import ctypes
 import time
 from .utils import *
-from .ctypes_input import *
+from .virtual_inputs import *
 
 @creation_log
 class BotHandler:
