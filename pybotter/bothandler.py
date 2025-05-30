@@ -10,6 +10,7 @@ from datetime import datetime
 import ctypes
 import time
 from .utils import *
+from .ctypes_input import *
 
 @creation_log
 class BotHandler:
@@ -60,7 +61,7 @@ class BotHandler:
     }
    
     
-    def __init__(self, window_name, debug = None, mute = None, mode = None) -> None:
+    def __init__(self, window_name, debug = None, mute = None, mode = None, interval = 1) -> None:
        
         # MAIN FIELDS
         self.window_name = window_name
@@ -74,9 +75,10 @@ class BotHandler:
         self.is_pause = False
         self.loop_time = time.time()
         self.fps = -1
-        self.screenshot = None
+        self.haystack = None
         self.debug = debug
-        self.images = {str:Vision}
+        self.needle_handlers = {str:Vision}
+        self.interval = interval
         
         # SPECIAL MODE INTERCEPTION
         if mode and "in" in mode:
@@ -107,30 +109,31 @@ class BotHandler:
         return True
 
     def check_needle_fit_haystack(self, needle_name):
-        needle = self.images.get(needle_name)
+        needle = self.needle_handlers.get(needle_name)
         if (needle.needle_h > self.window_handler.h) or (needle.needle_w > self.window_handler.w) :
             log("[WARNING]",  f"Needle image is bigger than the target window. needle_w = {needle.needle_w} | window_w = {self.window_handler.w} | needle_h = {needle.needle_h} | window_h = {self.window_handler.h}")
         return True
 
     def add_image(self, name, path):
-        if self.images.get(name) != None:
+        if self.needle_handlers.get(name) != None:
             raise Exception("Needle image name already existed")
         if self.check_file_exist(path):
-            self.images.update({name:Vision(path)})
-            if self.images.get(name) == None:
+            self.needle_handlers.update({name:Vision(path)})
+            if self.needle_handlers.get(name) == None:
                 raise Exception("Needle image returns a NULL value")
-            return self.images.get(name)
+            log(message= f"Image added: {name}")
+            return self.needle_handlers.get(name)
 
         raise Exception("Unexpected Error")
 
     def find_image(self, name, threshold, convert = None):
         "convert method = COLOR_BGR2GRAY"
-        needle = self.images.get(name)
+        needle = self.needle_handlers.get(name)
         typeneedle = type(needle)
         if typeneedle is not Vision:
             raise(Exception("Needle image not found, actual Type:",typeneedle))
         if self.check_needle_fit_haystack(name): 
-            return needle.find(self.screenshot, threshold, convert_mode= convert,debug_mode=self.debug)
+            return needle.find(self.haystack, threshold, convert_mode= convert,debug_mode=self.debug)
         raise Exception("UNEXPECTED ERROR")
 
     def keyboard_press(self, key, duration):
@@ -249,13 +252,23 @@ class BotHandler:
 
 #####################################
     def update_screenshot(self, debug = None):
-        self.screenshot = self.window_handler.get_screenshot(debug)
-        
+        self.haystack = self.window_handler.get_screenshot(debug)
+
+    def start_screenshot_updater(self, interval=1.0):
+        """Start a background thread to update the screenshot at regular intervals."""
+        log(message="Start a background thread to update the screenshot at regular intervals")
+        def updater():
+            while self.is_running:
+                self.update_screenshot(self.debug)
+                time.sleep(interval)
+
+        # Start the thread as a daemon so it stops with the main program
+        threading.Thread(target=updater, daemon=True).start()
     def save_current_screenshot(self, filename=None):
         """
         Saves the current screenshot stored in self.screenshot to a file.
         """
-        if self.screenshot is None:
+        if self.haystack is None:
             log("[ERROR]", "No screenshot to save.")
             return
 
@@ -272,13 +285,48 @@ class BotHandler:
         save_path = os.path.join(save_dir, filename)
 
         try:
-            success = cv2.imwrite(save_path, self.screenshot)
+            success = cv2.imwrite(save_path, self.haystack)
             if success:
                 log("[ERROR]", "Screenshot saved to {save_path}")
             else:
                 log("[ERROR]", "cv2.imwrite failed to save the file.")
         except Exception as e:
             log("[ERROR]", f"Failed to save screenshot: {e}")
+
+
+#####################################
+    def move_mouse_sendinput(self, target_x, target_y, duration=0):
+        screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+        screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+
+        def normalize(x, y):
+            return int(x * 65535 / screen_w), int(y * 65535 / screen_h)
+
+        pt = ctypes.wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+        start_x, start_y = pt.x, pt.y
+
+        steps = int(duration * 60) if duration > 0 else 1
+
+        for i in range(steps + 1):
+            t = i / steps if steps > 0 else 1
+            x = int(start_x + (target_x - start_x) * t)
+            y = int(start_y + (target_y - start_y) * t)
+            nx, ny = normalize(x, y)
+
+            mi = MOUSEINPUT(
+                dx=nx,
+                dy=ny,
+                mouseData=0,
+                dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                time=0,
+                dwExtraInfo=None
+            )
+            inp = INPUT(type=INPUT_MOUSE, mi=mi)
+            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+
+            if duration > 0:
+                time.sleep(duration / steps)
 
     def interception_click(self, x=None, y=None, duration=0):
         """
@@ -288,153 +336,58 @@ class BotHandler:
         # optional relative move
         self.im.click_at(self.hwnd, x=x,y=y,duration = 0.1)
 
-    def keep_awake(self):
-        ES_CONTINUOUS = 0x80000000
-        ES_SYSTEM_REQUIRED = 0x00000001
-        ES_DISPLAY_REQUIRED = 0x00000002
-        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
+    # def keep_awake(self):
+    #     ES_CONTINUOUS = 0x80000000
+    #     ES_SYSTEM_REQUIRED = 0x00000001
+    #     ES_DISPLAY_REQUIRED = 0x00000002
+    #     ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
 
-        while True:
-            time.sleep(30)  # Still needs a loop to hold the execution state
+    #     while True:
+    #         time.sleep(30)  # Still needs a loop to hold the execution state
 
-    def start_keep_awake_thread(self):
-        t = threading.Thread(target=self.keep_awake, daemon=True)
-        t.start()
+    # def start_keep_awake_thread(self):
+    #     t = threading.Thread(target=self.keep_awake, daemon=True)
+    #     t.start()
 
     #############################
     #############################  
-    @creation_log
-    class InterceptionMouse:
-        FILTER_MOUSE_ALL = 0xFFFF
-        MOUSE_LEFT_BUTTON_DOWN = 0x0002
-        MOUSE_LEFT_BUTTON_UP = 0x0004
-
-        _dll_name = "interception.dll"
-        _dll_path = os.path.join(os.path.dirname(__file__), _dll_name)
-        if not os.path.exists(_dll_path):
-            raise FileNotFoundError(f"Could not find {_dll_name} at {_dll_path}")
-        _lib = ctypes.WinDLL(_dll_path)
-
-        _Context = ctypes.c_void_p
-        _Device = ctypes.c_int
-
-        @creation_log
-        class MouseStroke(ctypes.Structure):
-            _fields_ = [
-                ("state", ctypes.c_ushort),
-                ("flags", ctypes.c_ushort),
-                ("rolling", ctypes.c_uint),
-                ("x", ctypes.c_int),
-                ("y", ctypes.c_int),
-            ]
-
-        _lib.interception_create_context.restype = _Context
-        _lib.interception_destroy_context.argtypes = (_Context,)
-        _lib.interception_destroy_context.restype = None
-
-        _PredFn = ctypes.CFUNCTYPE(ctypes.c_int, _Device)
-        _interception_is_mouse = _PredFn(("interception_is_mouse", _lib))
-
-        _lib.interception_set_filter.argtypes = (_Context, _PredFn, ctypes.c_uint)
-        _lib.interception_set_filter.restype = None
-
-        _lib.interception_wait.argtypes = (_Context,)
-        _lib.interception_wait.restype = _Device
-
-        _lib.interception_receive.argtypes = (_Context, _Device, ctypes.c_void_p, ctypes.c_int)
-        _lib.interception_receive.restype = ctypes.c_int
-
-        _lib.interception_send.argtypes = (_Context, _Device, ctypes.c_void_p, ctypes.c_int)
-        _lib.interception_send.restype = ctypes.c_int
-
-        def __init__(self, hold_duration: float = 0.05, forward_mouse: bool = False):
-            self._send_ctx = self._lib.interception_create_context()
-            self.hold_duration = hold_duration
-            self._dev = None
-            self._forward_mouse = forward_mouse
-
-            if forward_mouse:
-                self._hook_ctx = self._lib.interception_create_context()
-                self._lib.interception_set_filter(
-                    self._hook_ctx,
-                    self._interception_is_mouse,
-                    self.FILTER_MOUSE_ALL
-                )
-                self._dev = self._lib.interception_wait(self._hook_ctx)
-                self._stop_event = threading.Event()
-                self._thread = threading.Thread(target=self._forward_loop, daemon=True)
-                self._thread.start()
-            else:
-                # Use dummy device ID (0) or configure as needed for send-only use
-                self._dev = 0
-                self._hook_ctx = None
-                self._thread = None
-                self._stop_event = None
-
-        def _forward_loop(self):
-            stroke = self.MouseStroke()
-            size = ctypes.sizeof(stroke)
-            while not self._stop_event.is_set():
-                dev = self._lib.interception_wait(self._hook_ctx)
-                if dev is None:
-                    continue
-                if self._lib.interception_receive(self._hook_ctx, dev, ctypes.byref(stroke), size) > 0:
-                    self._lib.interception_send(self._hook_ctx, dev, ctypes.byref(stroke), size)
-
-        def click(self, duration: float = None):
-            d = duration if duration is not None else self.hold_duration
-            down = self.MouseStroke(state=self.MOUSE_LEFT_BUTTON_DOWN, flags=0, rolling=0, x=0, y=0)
-            up   = self.MouseStroke(state=self.MOUSE_LEFT_BUTTON_UP,   flags=0, rolling=0, x=0, y=0)
-
-            self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(down), ctypes.sizeof(down))
-            time.sleep(d)
-            self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(up), ctypes.sizeof(up))
-
-        def move(self, dx: int, dy: int):
-            mv = self.MouseStroke(state=0, flags=0, rolling=0, x=dx, y=dy)
-            self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(mv), ctypes.sizeof(mv))
-
-        def click_and_move(self, dx: int, dy: int, duration: float = None):
-            self.move(dx, dy)
-            self.click(duration)
-
-        def click_at(self, hwnd, x, y, duration: float = None):
-            cx, cy = win32gui.ScreenToClient(hwnd, (x, y))
-            lparam = win32api.MAKELONG(cx, cy)
-            win32gui.SendMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
-            win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
-            time.sleep(duration if duration is not None else self.hold_duration)
-            win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
-
-        def __del__(self):
-            try:
-                if self._forward_mouse:
-                    self._stop_event.set()
-                    if self._thread and self._thread.is_alive():
-                        self._thread.join(timeout=0.1)
-                    self._lib.interception_destroy_context(self._hook_ctx)
-
-                if self._send_ctx:
-                    self._lib.interception_destroy_context(self._send_ctx)
-            except Exception:
-                pass
+    
 
 ############################
-@creation_log
-class PropagatingThread(threading.Thread):
-    def run(self):
-        self.exc = None
-        try:
-            if hasattr(self, '_Thread__target'):
-                # Thread uses name mangling prior to Python 3.
-                self.ret = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
-            else:
-                self.ret = self._target(*self._args, **self._kwargs)
-        except BaseException as e:
-            self.exc = e
+        # Define MOUSEINPUT first
+        class MOUSEINPUT(ctypes.Structure):
+            _fields_ = [
+                ("dx", ctypes.c_long),
+                ("dy", ctypes.c_long),
+                ("mouseData", ctypes.c_ulong),
+                ("dwFlags", ctypes.c_ulong),
+                ("time", ctypes.c_ulong),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))
+            ]
 
-    def join(self, timeout=None):
-        super(PropagatingThread, self).join(timeout)
-        if self.exc:
-            raise self.exc
-        return self.ret
+        # Define INPUT after
+        class INPUT(ctypes.Structure):
+            _fields_ = [
+                ("type", ctypes.c_ulong),
+                ("mi", MOUSEINPUT)
+            ]
+############################
+# @creation_log
+# class PropagatingThread(threading.Thread):
+#     def run(self):
+#         self.exc = None
+#         try:
+#             if hasattr(self, '_Thread__target'):
+#                 # Thread uses name mangling prior to Python 3.
+#                 self.ret = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
+#             else:
+#                 self.ret = self._target(*self._args, **self._kwargs)
+#         except BaseException as e:
+#             self.exc = e
+
+#     def join(self, timeout=None):
+#         super(PropagatingThread, self).join(timeout)
+#         if self.exc:
+#             raise self.exc
+#         return self.ret
+

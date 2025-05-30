@@ -2,7 +2,7 @@ from datetime import datetime
 from functools import wraps
 
 
-def log(level, message):
+def log(level = "INFO", message = "Unexpected issue occurred"):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if level.startswith('[') and level.endswith(']'):
         level_str = level
