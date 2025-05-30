@@ -83,7 +83,7 @@ class TestPybotter(unittest.TestCase):
     def test_add_image(self):
         self.assertIsInstance(self.pybotter.add_image(self.needle_name, self.needle_path), Vision)
         self.assertRaises(Exception,self.pybotter.add_image,(self.needle_name, self.needle_path))
-        self.assertIsInstance(self.pybotter.bothandler.images.get(self.needle_name), Vision)
+        self.assertIsInstance(self.pybotter.bothandler.needle_handlers.get(self.needle_name), Vision)
 
     def test_needle_bigger_than_image_when_find(self):
         self.assertRaises(Exception, self.pybotter.find_image,(self.needle_name, 0.5))
