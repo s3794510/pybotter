@@ -61,7 +61,7 @@ class BotHandler:
     }
    
     
-    def __init__(self, window_name, debug = None, mute = None, mode = None, interval = 1) -> None:
+    def __init__(self, window_name, debug = None, mute = None, mode = None, interval = 1, pause_switch = None) -> None:
        
         # MAIN FIELDS
         self.window_name = window_name
@@ -79,10 +79,14 @@ class BotHandler:
         self.debug = debug
         self.needle_handlers = {str:Vision}
         self.interval = interval
+        self.keywait = 0.1
+        self.pause_switch = pause_switch
+        if self.pause_switch is None:
+            log("WARNING", "Pause switch is not defined, pausing might not work correctly")
         
         # SPECIAL MODE INTERCEPTION
         if mode and "in" in mode:
-            self.im = self.InterceptionMouse(hold_duration=0.05)
+            self.im = InterceptionMouse(hold_duration=0.05)
             self._exit_key_combos = [['esc', 'control'], ['ctrl', 'space']]
         else:
             self._exit_key_combos = [['esc', 'control']]
@@ -143,12 +147,16 @@ class BotHandler:
         win32api.PostMessage(self.hwnd, win32con.WM_KEYUP, keycode, 0)
         return 0
 
-    def leftclick(self, x, y, duration=0.1):
-        pass
+    def leftclick(self, x = None, y = None, duration=0.1):
+        if x is None or y is None:
+            SendInputMouse.click_at_current_to_window(self.hwnd, duration)
 
 
     def flow_handle(self, sleep_time = 0, debug = 'regular'):
         sleep(sleep_time)
+        # Pause handling
+        if self.pause_switch:
+            self.pause_switch.wait()  # Respect global pause
         while self.is_pause:
             sleep(0.05)
         # press 'q' with the output window focused to exit.
@@ -182,11 +190,15 @@ class BotHandler:
 ##############################
     def pause(self):
         self.is_pause = True
+        if self.pause_switch:
+            self.pause_switch.clear()
         print("Paused.\n")
         self.soundhandler.sound_pause()
 
     def unpause(self):
         self.is_pause = False
+        if self.pause_switch:
+            self.pause_switch.set()
         print("Continued.\n")
         self.soundhandler.sound_unpause()
         pass
@@ -195,13 +207,16 @@ class BotHandler:
         thread = threading.Thread(target=self.pause_handle, daemon=True)
         thread.start()
 
-    def pause_handle(self, sleep_time=0.5):
-        key_combo = lambda: keyboard.is_pressed('p') and keyboard.is_pressed('control')
+    def pause_handle(self):
+        key_combos = [
+            lambda: keyboard.is_pressed('control') and keyboard.is_pressed('p'),
+            lambda: keyboard.is_pressed('control') and keyboard.is_pressed('caps lock'),
+        ]
         last_trigger_time = 0
-        debounce_interval = 1  # Prevents repeated toggle
+        debounce_interval = 1  # seconds
 
         while self.is_running:
-            if key_combo():
+            if any(combo() for combo in key_combos):
                 now = time.time()
                 if now - last_trigger_time >= debounce_interval:
                     if self.is_pause:
@@ -210,7 +225,7 @@ class BotHandler:
                         self.pause()
                     last_trigger_time = now
 
-            time.sleep(sleep_time)
+            time.sleep(self.keywait)
                     
 ##############################
     def exit_handle_thread(self, key_combinations):
@@ -230,27 +245,32 @@ class BotHandler:
             for combo in self._exit_key_combos:
                 if all(keyboard.is_pressed(key) for key in combo):
                     self.exit()
+            time.sleep(self.keywait)
 
     def exit(self):
         self.is_running = False
+        # Unpause program
+        self.is_pause = False
+        self.pause_switch.set()
         self.soundhandler.sound_exit()
         pass
 
 #####################################
     def show_fps_handle_thread(self):
-        thread = threading.Thread(target=self.show_fps_handle, args= ()) 
+        thread = threading.Thread(target=self.show_fps_handle, args= (), daemon= True) 
         thread.start()
 
-    def show_fps_handle(self, sleep_time = 0.1):
-        while self.is_running:
-            sleep(sleep_time)
-            if keyboard.is_pressed('f') and keyboard.is_pressed('control'):
-                print(f"FPS: {self.fps}")
-                print("Threads: ", threading.active_count())
-                sleep(1)
+    def show_fps_handle(self):
+        sleep(self.keywait)
+        if self.pause_switch:
+            self.pause_switch.wait()  # Respect global pause
+        if keyboard.is_pressed('f') and keyboard.is_pressed('control'):
+            print(f"FPS: {self.fps}")
+            print("Threads: ", threading.active_count())
+            sleep(1)
 
 #####################################
-    def update_screenshot(self, debug = None):
+    def update_screenshot(self, debug = ''):
         self.haystack = self.window_handler.get_screenshot(debug)
 
     def start_screenshot_updater(self, interval=1.0):
@@ -258,11 +278,14 @@ class BotHandler:
         log(message="Start a background thread to update the screenshot at regular intervals")
         def updater():
             while self.is_running:
+                if self.pause_switch:
+                    self.pause_switch.wait()  # Respect global pause
                 self.update_screenshot(self.debug)
                 time.sleep(interval)
 
         # Start the thread as a daemon so it stops with the main program
         threading.Thread(target=updater, daemon=True).start()
+
     def save_current_screenshot(self, filename=None):
         """
         Saves the current screenshot stored in self.screenshot to a file.
@@ -301,6 +324,12 @@ class BotHandler:
         def normalize(x, y):
             return int(x * 65535 / screen_w), int(y * 65535 / screen_h)
 
+        # Convert client (window) coords to screen coords
+        point = ctypes.wintypes.POINT(target_x, target_y)
+        ctypes.windll.user32.ClientToScreen(self.hwnd, ctypes.byref(point))
+        target_x, target_y = point.x, point.y
+
+        # Get current cursor position
         pt = ctypes.wintypes.POINT()
         ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
         start_x, start_y = pt.x, pt.y
@@ -353,23 +382,7 @@ class BotHandler:
     
 
 ############################
-        # Define MOUSEINPUT first
-        class MOUSEINPUT(ctypes.Structure):
-            _fields_ = [
-                ("dx", ctypes.c_long),
-                ("dy", ctypes.c_long),
-                ("mouseData", ctypes.c_ulong),
-                ("dwFlags", ctypes.c_ulong),
-                ("time", ctypes.c_ulong),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))
-            ]
 
-        # Define INPUT after
-        class INPUT(ctypes.Structure):
-            _fields_ = [
-                ("type", ctypes.c_ulong),
-                ("mi", MOUSEINPUT)
-            ]
 ############################
 # @creation_log
 # class PropagatingThread(threading.Thread):

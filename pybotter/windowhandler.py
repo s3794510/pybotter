@@ -124,15 +124,8 @@ class WindowHandler:
         win32gui.EnumWindows(winEnumHandler, None)
         return 0
 
-    # translate a pixel position on a screenshot image to a pixel position on the screen.
-    # pos = (x, y)
-    # WARNING: if you move the window being captured after execution is started, this will
-    # return incorrect coordinates, because the window position is only calculated in
-    # the __init__ constructor.
-
     def get_screen_position(self, pos):
         return (pos[0] + self.offset_x, pos[1] + self.offset_y)
-
 
     @staticmethod
     def get_windowsize(self) -> Tuple:

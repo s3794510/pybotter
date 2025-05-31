@@ -3,13 +3,16 @@ import time
 from .utils import *
 import threading
 import os
+import win32api, win32gui, win32con
 
 # Constants
 INPUT_MOUSE = 0
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_ABSOLUTE = 0x8000
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
 
-# Structs (must be global if reused)
+# Structs
 class MOUSEINPUT(ctypes.Structure):
     _fields_ = [
         ("dx", ctypes.c_long),
@@ -17,7 +20,7 @@ class MOUSEINPUT(ctypes.Structure):
         ("mouseData", ctypes.c_ulong),
         ("dwFlags", ctypes.c_ulong),
         ("time", ctypes.c_ulong),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
     ]
 
 class INPUT(ctypes.Structure):
@@ -25,6 +28,63 @@ class INPUT(ctypes.Structure):
         ("type", ctypes.c_ulong),
         ("mi", MOUSEINPUT)
     ]
+
+@creation_log
+class SendInputMouse:
+    @staticmethod
+    def click_at_current(duration=0.05):
+        """Click at the current mouse position using SendInput."""
+        down = INPUT()
+        down.type = INPUT_MOUSE
+        down.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTDOWN, 0, None)
+
+        up = INPUT()
+        up.type = INPUT_MOUSE
+        up.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
+
+        ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
+        time.sleep(duration)
+        ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
+
+    @staticmethod
+    def move_to_window_point(hwnd, x, y):
+        """Move cursor to a point inside a window (client to screen coords)."""
+        point = ctypes.wintypes.POINT(x, y)
+        ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(point))
+        ctypes.windll.user32.SetCursorPos(point.x, point.y)
+
+    @staticmethod
+    def click_on_window(hwnd, x, y, duration=0.05):
+        """Move to point in window and click using SendInput."""
+        SendInputMouse.move_to_window_point(hwnd, x, y)
+        SendInputMouse.click_at_current(duration)
+
+    @staticmethod
+    def click_with_sendmessage(hwnd, x, y, duration=0.05):
+        """Click inside a window directly using Win32 messages (only works for GUI apps)."""
+        lparam = win32api.MAKELONG(x, y)
+        win32gui.SendMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
+        win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
+        time.sleep(duration)
+        win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+
+    @staticmethod
+    def click_at_current_to_window(hwnd, duration=0.05):
+        """Send a real click at the current position to the foreground window using SendInput."""
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(hwnd)
+
+        down = INPUT()
+        down.type = INPUT_MOUSE
+        down.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTDOWN, 0, None)
+
+        up = INPUT()
+        up.type = INPUT_MOUSE
+        up.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
+
+        ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
+        time.sleep(duration)
+        ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
 
 @creation_log
 class InterceptionMouse:

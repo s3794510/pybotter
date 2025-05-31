@@ -20,9 +20,16 @@ class PyBot:
         self.mode = mode
         self.window_name = window_name
         self.sleeptime = sleeptime
-        self.bothandler = BotHandler(window_name, self.debug, mode = mode, interval = interval)
-        self.alarm_lock = threading.Lock()
         self.interval = interval
+
+        # Central pause switch
+        self.pause_switch = threading.Event()
+        self.pause_switch.set()  # Start unpaused
+
+        # Create handlers
+        self.bothandler = BotHandler(window_name, self.debug, mode = mode, interval = interval, pause_switch = self.pause_switch)
+        self.alarm_lock = threading.Lock()
+        
         log("INFO", f"Object PyBot created, Window name: {self.window_name}")
         log("INFO", f"RUNNING MODE: {self.mode}, SLEEP TIME: {self.sleeptime}s, INTERVAL: {self.interval}, DEBUG MODE: {self.debug}")
 
@@ -51,8 +58,8 @@ class PyBot:
         start_time = time.time()
         while self.bothandler.haystack is None:
             if time.time() - start_time > 5:
-                log("ERROR")
-                raise TimeoutError("❌ Timeout: self.bothandler.haystack did not update within 5 seconds.")
+                log("ERROR", "Timeout: self.bothandler.haystack did not update within 5 seconds")
+                #raise TimeoutError("Timeout: self.bothandler.haystack did not update within 5 seconds.")
             time.sleep(0.1)  # Avoid CPU overuse
 
         # Set the cimputer to sleep
@@ -69,12 +76,16 @@ class PyBot:
         """)
 
     def _runmainloop(self, actions):
-        while(self.bothandler.is_running):            
-            # Put the actions (mouse/keyboard) inside function actions in this class
-            actions()
+        while(self.bothandler.is_running):   
+
+            # Pause handling
+            if not self.bothandler.is_pause:
+                # Put the actions (mouse/keyboard) inside function actions in this class
+                actions()
 
             # hanlding after each cycle
             self.bothandler.flow_handle(sleep_time = self.sleeptime, debug = self.debug)
+        log(message="Closing the program")
         self.bothandler.destroyAllWindows()
         return 0
 
@@ -86,6 +97,7 @@ class PyBot:
         return run
 
 ##############################################
+# WINDOW HANDLING
 ##############################################
     def list_windows():
         return WindowHandler.list_window_titles()
@@ -99,36 +111,51 @@ class PyBot:
 
     def show_window(self):
         self.bothandler.show_screenshot()
-
+    
+    def update_screenshot(self, debug = ''):
+        self.bothandler.update_screenshot(debug = '')
 ###############################################
+# INPUT HANDLING
 ###############################################
-    def left_click(self, x, y, duration, mode="default"):
-
+    def left_click(self, x = None, y = None, duration = 0, mode= "default"):
         if mode == "interception" or mode == "i":
             self.bothandler.interception_click(x, y, duration)
         else:
-            self.bothandler.leftclick(x, y, duration)
+            self.bothandler.leftclick(duration=duration)
 
     def key_press(self, key, duration):
         return self.bothandler.keyboard_press(key, duration)
+    
+    def mouse_move(self, x, y, duration, mode= "default"):
+        if mode == "":
+            pass
+        else:
+            self.bothandler.move_mouse_sendinput(x, y, duration)
 
+
+###############################################
+# UTILITIES
+###############################################
     def resize(self, x, y):
         return self.bothandler.resize(x, y)
     
-    def play_alarm(self):
+    def play_alarm(self, mode = 0):
         def alarm_sound():
             if not self.alarm_lock.acquire(blocking=False):
                 return  # Exit if another alarm is already running
             
             try:
-                alarm_sequence = [
-                    (1000, 50),
-                    (1200, 50),
-                    (1500, 50),
-                    (1000, 50),
-                    (1200, 50),
-                    (1500, 50)
-                ]
+                if mode == 1:
+                    alarm_sequence =[(1000, 50)]
+                else:
+                    alarm_sequence = [
+                        (1000, 50),
+                        (1200, 50),
+                        (1500, 50),
+                        (1000, 50),
+                        (1200, 50),
+                        (1500, 50)
+                    ]
                 for freq, dur in alarm_sequence:
                     winsound.Beep(freq, dur)
                     time.sleep(0.1)
