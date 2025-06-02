@@ -8,7 +8,6 @@ from .soundhandler import SoundHandler
 import ctypes
 from datetime import datetime
 import ctypes
-import time
 from .utils import *
 from .virtual_inputs import *
 
@@ -73,7 +72,7 @@ class BotHandler:
         self.soundhandler = SoundHandler(self.soundpath)
         self.is_running = True
         self.is_pause = False
-        self.loop_time = time.time()
+        self.loop_time = time()
         self.fps = -1
         self.haystack = None
         self.debug = debug
@@ -164,8 +163,8 @@ class BotHandler:
         if cv2.waitKey(1) == ord('q'):
             self.exit()
         # calcualte times processed each second
-        self.fps = 1 / (time.time() - self.loop_time)
-        self.loop_time = time.time()
+        self.fps = 1 / (time() - self.loop_time)
+        self.loop_time = time()
 
 
     # def init(self):
@@ -217,7 +216,7 @@ class BotHandler:
 
         while self.is_running:
             if any(combo() for combo in key_combos):
-                now = time.time()
+                now = time()
                 if now - last_trigger_time >= debounce_interval:
                     if self.is_pause:
                         self.unpause()
@@ -225,7 +224,7 @@ class BotHandler:
                         self.pause()
                     last_trigger_time = now
 
-            time.sleep(self.keywait)
+            sleep(self.keywait)
                     
 ##############################
     def exit_handle_thread(self, key_combinations):
@@ -245,7 +244,7 @@ class BotHandler:
             for combo in self._exit_key_combos:
                 if all(keyboard.is_pressed(key) for key in combo):
                     self.exit()
-            time.sleep(self.keywait)
+            sleep(self.keywait)
 
     def exit(self):
         self.is_running = False
@@ -281,7 +280,7 @@ class BotHandler:
                 if self.pause_switch:
                     self.pause_switch.wait()  # Respect global pause
                 self.update_screenshot(self.debug)
-                time.sleep(interval)
+                sleep(interval)
 
         # Start the thread as a daemon so it stops with the main program
         threading.Thread(target=updater, daemon=True).start()
@@ -354,7 +353,7 @@ class BotHandler:
             ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
 
             if duration > 0:
-                time.sleep(duration / steps)
+                sleep(duration / steps)
 
     def interception_click(self, x=None, y=None, duration=0):
         """
@@ -371,7 +370,7 @@ class BotHandler:
     #     ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
 
     #     while True:
-    #         time.sleep(30)  # Still needs a loop to hold the execution state
+    #         sleep(30)  # Still needs a loop to hold the execution state
 
     # def start_keep_awake_thread(self):
     #     t = threading.Thread(target=self.keep_awake, daemon=True)

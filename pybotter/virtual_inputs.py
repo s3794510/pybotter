@@ -1,5 +1,5 @@
 import ctypes
-import time
+from time import sleep, time
 from .utils import *
 import threading
 import os
@@ -43,7 +43,7 @@ class SendInputMouse:
         up.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
 
         ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
-        time.sleep(duration)
+        sleep(duration)
         ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
 
     @staticmethod
@@ -65,7 +65,7 @@ class SendInputMouse:
         lparam = win32api.MAKELONG(x, y)
         win32gui.SendMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
         win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
-        time.sleep(duration)
+        sleep(duration)
         win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
 
     @staticmethod
@@ -83,7 +83,7 @@ class SendInputMouse:
         up.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
 
         ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
-        time.sleep(duration)
+        sleep(duration)
         ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
 
 @creation_log
@@ -170,7 +170,7 @@ class InterceptionMouse:
         up   = self.MouseStroke(state=self.MOUSE_LEFT_BUTTON_UP,   flags=0, rolling=0, x=0, y=0)
 
         self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(down), ctypes.sizeof(down))
-        time.sleep(d)
+        sleep(d)
         self._lib.interception_send(self._send_ctx, self._dev, ctypes.byref(up), ctypes.sizeof(up))
 
     def move(self, dx: int, dy: int):
@@ -201,7 +201,7 @@ class InterceptionMouse:
 
     #     win32gui.SendMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
     #     win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
-    #     time.sleep(duration if duration is not None else self.hold_duration)
+    #     sleep(duration if duration is not None else self.hold_duration)
     #     win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
 
     #     print("[INFO] Click sent.")
