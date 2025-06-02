@@ -17,3 +17,5 @@ trash
 *.py
 !pybotter/*
 !pybotter/sound/*
+pybotter/vmultiinstaller.py
+pybotter/windowUIexporer.py
