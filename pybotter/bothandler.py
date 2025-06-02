@@ -256,17 +256,26 @@ class BotHandler:
 
 #####################################
     def show_fps_handle_thread(self):
-        thread = threading.Thread(target=self.show_fps_handle, args= (), daemon= True) 
+        thread = threading.Thread(target=self.show_fps_handle, args=(), daemon=True) 
         thread.start()
 
     def show_fps_handle(self):
-        sleep(self.keywait)
-        if self.pause_switch:
-            self.pause_switch.wait()  # Respect global pause
-        if keyboard.is_pressed('f') and keyboard.is_pressed('control'):
-            print(f"FPS: {self.fps}")
-            print("Threads: ", threading.active_count())
-            sleep(1)
+        last_trigger_time = 0
+        debounce_interval = 0.5  # seconds
+
+        while self.is_running:
+            if self.pause_switch:
+                self.pause_switch.wait()  # Respect global pause
+            
+            # Check for Ctrl+F
+            if keyboard.is_pressed('f') and keyboard.is_pressed('control'):
+                current_time = time()
+                if current_time - last_trigger_time >= debounce_interval:
+                    print(f"FPS: {self.fps:.2f}")  # Format to 2 decimal places
+                    print(f"Active Threads: {threading.active_count()}")
+                    last_trigger_time = current_time
+            
+            sleep(self.keywait)
 
 #####################################
     def update_screenshot(self, debug = ''):
