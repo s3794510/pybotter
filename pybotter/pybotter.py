@@ -219,30 +219,17 @@ class PyBot:
     def resize(self, x, y):
         return self.bothandler.resize(x, y)
     
-    def play_alarm(self, mode = 0):
-        def alarm_sound():
-            if not self.alarm_lock.acquire(blocking=False):
-                return  # Exit if another alarm is already running
-            
-            try:
-                if mode == 1:
-                    alarm_sequence =[(1000, 50)]
-                else:
-                    alarm_sequence = [
-                        (1000, 50),
-                        (1200, 50),
-                        (1500, 50),
-                        (1000, 50),
-                        (1200, 50),
-                        (1500, 50)
-                    ]
-                for freq, dur in alarm_sequence:
-                    winsound.Beep(freq, dur)
-                    sleep(0.1)
-            finally:
-                self.alarm_lock.release()  # Ensure lock is released
-
-        threading.Thread(target=alarm_sound, daemon=True).start()
+    def play_alarm(self, mode=0):
+        """
+        Play an alarm sound with different modes:
+        0: Default - Triple beep sequence
+        1: Single beep - Quick notification
+        2: Warning - Ascending tone sequence
+        3: Alert - High-pitched urgent sequence
+        4: Success - Pleasant ascending melody
+        5: Error - Descending error tone
+        """
+        self.bothandler.soundhandler.play_alarm(mode)
     
     def wait(self, duration):
         sleep(duration)

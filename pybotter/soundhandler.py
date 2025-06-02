@@ -1,11 +1,14 @@
 import threading
 from .utils import *
+import winsound
+from time import sleep
 
 @creation_log
 class SoundHandler:
 
     def __init__(self, sound_folder) -> None:
         self.soundfolderpath = sound_folder
+        self.alarm_lock = threading.Lock()
 
     def _playsoundWin(self, sound, block = True):
         """
@@ -25,7 +28,6 @@ class SoundHandler:
         '''
         from ctypes import c_buffer, windll
         from random import random
-        from time   import sleep
         from sys    import getfilesystemencoding
 
         def winCommand(*command):
@@ -65,3 +67,51 @@ class SoundHandler:
     def play(self, sound_folder):
             thread = threading.Thread(target=self._playsoundWin, args=(sound_folder,))
             thread.start()
+
+    def play_alarm(self, mode=0):
+        """
+        Play different alarm sounds based on mode:
+        0: Default - Triple beep sequence
+        1: Single beep - Quick notification
+        2: Warning - Ascending tone sequence
+        3: Alert - High-pitched urgent sequence
+        4: Success - Pleasant ascending melody
+        5: Error - Descending error tone
+        """
+        def alarm_sound():
+            if not self.alarm_lock.acquire(blocking=False):
+                return  # Exit if another alarm is already running
+            
+            try:
+                alarm_sequences = {
+                    0: [  # Default triple beep
+                        (1000, 50), (1200, 50), (1500, 50),
+                        (1000, 50), (1200, 50), (1500, 50)
+                    ],
+                    1: [  # Single beep
+                        (1000, 50)
+                    ],
+                    2: [  # Warning
+                        (800, 100), (1000, 100), (1200, 100)
+                    ],
+                    3: [  # Alert
+                        (1500, 50), (1500, 50), (1500, 50),
+                        (1500, 200)
+                    ],
+                    4: [  # Success
+                        (800, 100), (1000, 100), (1200, 100),
+                        (1500, 200)
+                    ],
+                    5: [  # Error
+                        (1200, 100), (1000, 100), (800, 200)
+                    ]
+                }
+                
+                sequence = alarm_sequences.get(mode, alarm_sequences[0])
+                for freq, dur in sequence:
+                    winsound.Beep(freq, dur)
+                    sleep(0.1)
+            finally:
+                self.alarm_lock.release()  # Ensure lock is released
+
+        threading.Thread(target=alarm_sound, daemon=True).start()
