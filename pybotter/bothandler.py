@@ -72,8 +72,12 @@ class BotHandler:
         self.soundhandler = SoundHandler(self.soundpath)
         self.is_running = True
         self.is_pause = False
-        self.loop_time = time()
-        self.fps = -1
+        
+        # Performance monitoring
+        self.perf_tracker = PerformanceTracker()
+        self.bot_monitor = self.perf_tracker.get_monitor("Bot Logic")
+        self.capture_monitor = self.perf_tracker.get_monitor("Screen Capture")
+        
         self.haystack = None
         self.debug = debug
         self.needle_handlers = {str:Vision}
@@ -81,7 +85,7 @@ class BotHandler:
         self.keywait = 0.1
         self.pause_switch = pause_switch
         if self.pause_switch is None:
-            log("WARNING", "Pause switch is not defined, pausing might not work correctly")
+            log("[WARNING]", "Pause switch is not defined, pausing might not work correctly")
         
         # SPECIAL MODE INTERCEPTION
         if mode and "in" in mode:
@@ -162,10 +166,9 @@ class BotHandler:
         # waits 1 ms every loop to process key presses
         if cv2.waitKey(1) == ord('q'):
             self.exit()
-        # calcualte times processed each second
-        self.fps = 1 / (time() - self.loop_time)
-        self.loop_time = time()
-
+            
+        # Update bot logic FPS
+        self.bot_monitor.update()
 
     # def init(self):
     #     self.soundhandler.sound_start()
@@ -271,8 +274,7 @@ class BotHandler:
             if keyboard.is_pressed('f') and keyboard.is_pressed('control'):
                 current_time = time()
                 if current_time - last_trigger_time >= debounce_interval:
-                    print(f"FPS: {self.fps:.2f}")  # Format to 2 decimal places
-                    print(f"Active Threads: {threading.active_count()}")
+                    print_performance_stats()  # Use the new universal stats printer
                     last_trigger_time = current_time
             
             sleep(self.keywait)
@@ -280,6 +282,8 @@ class BotHandler:
 #####################################
     def update_screenshot(self, debug = ''):
         self.haystack = self.window_handler.get_screenshot(debug)
+        # Update screen capture FPS
+        self.capture_monitor.update()
 
     def start_screenshot_updater(self, interval=1.0):
         """Start a background thread to update the screenshot at regular intervals."""
