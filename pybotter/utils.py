@@ -5,7 +5,7 @@ from collections import defaultdict
 import threading
 
 class PerformanceMonitor:
-    """Universal performance monitoring system for tracking FPS and execution times."""
+    """Universal performance monitoring system for tracking execution cycles and times."""
     
     def __init__(self, name, sample_size=30, min_interval=0.0001):
         self.name = name
@@ -13,36 +13,36 @@ class PerformanceMonitor:
         self.min_interval = min_interval
         self.samples = []
         self.last_time = time()
-        self.fps = 0.0
+        self.cycles_per_sec = 0.0
         self.avg_execution_time = 0.0
         self.total_calls = 0
         self._lock = threading.Lock()
     
     def update(self):
-        """Update FPS calculation"""
+        """Update cycle rate calculation"""
         with self._lock:
             current_time = time()
             time_delta = max(current_time - self.last_time, self.min_interval)
-            new_fps = 1.0 / time_delta
+            new_rate = 1.0 / time_delta
             
-            # Sanity check the FPS value
-            if 0 < new_fps < 1000:  # Cap at 1000 FPS to filter outliers
-                self.samples.append(new_fps)
+            # Sanity check the rate value
+            if 0 < new_rate < 1000:  # Cap at 1000 cycles/sec to filter outliers
+                self.samples.append(new_rate)
                 if len(self.samples) > self.sample_size:
                     self.samples.pop(0)
-                self.fps = sum(self.samples) / len(self.samples)
+                self.cycles_per_sec = sum(self.samples) / len(self.samples)
             
             self.last_time = current_time
             self.total_calls += 1
-            return self.fps
+            return self.cycles_per_sec
 
     def get_stats(self):
         """Get current performance statistics"""
         with self._lock:
             return {
                 'name': self.name,
-                'fps': self.fps,
-                'avg_execution_time': 1.0 / self.fps if self.fps > 0 else 0,
+                'cycles_per_sec': self.cycles_per_sec,
+                'avg_execution_time': 1.0 / self.cycles_per_sec if self.cycles_per_sec > 0 else 0,
                 'total_calls': self.total_calls,
                 'samples': len(self.samples)
             }
@@ -102,7 +102,7 @@ def print_performance_stats():
     print("-" * 50)
     for name, data in stats.items():
         print(f"{data['name']}:")
-        print(f"  FPS: {data['fps']:.1f}")
+        print(f"  Cycles/sec: {data['cycles_per_sec']:.1f}")
         print(f"  Avg Execution Time: {data['avg_execution_time']*1000:.1f}ms")
         print(f"  Total Calls: {data['total_calls']}")
     print("-" * 50)

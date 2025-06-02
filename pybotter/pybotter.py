@@ -121,14 +121,15 @@ class PyBot:
     def _before_mainloop(self):
         # Start updating screenshots of target window
         self.bothandler.start_screenshot_updater(self.interval)
-        # start_time = time()
-        # while self.bothandler.haystack is None:
-        #     if time() - start_time > 5:
-        #         log("ERROR", "Timeout: self.bothandler.haystack did not update within 5 seconds")
-        #         # raise TimeoutError("Timeout: self.bothandler.haystack did not update within 5 seconds.")
-        #     sleep(0.1)  # Avoid CPU overuse
+        # Wait for first screenshot to be captured
+        start_time = time()
+        while self.bothandler.haystack is None:
+            if time() - start_time > 5:
+                log("[WARNING]", "Timeout: Failed to capture initial screenshot within 5 seconds")
+                break
+            sleep(0.1)  # Avoid CPU overuse
 
-        # Set the cimputer to sleep
+        # Set the computer to keep being awake
         if self.mode:
             if 'awake' in self.mode:
                 self._keep_awake()
