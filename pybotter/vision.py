@@ -25,13 +25,9 @@ class Vision:
         # There are 6 methods to choose from:
         # TM_CCOEFF, TM_CCOEFF_NORMED, TM_CCORR, TM_CCORR_NORMED, TM_SQDIFF, TM_SQDIFF_NORMED
         self.method = method
-
-    
-    def find__ (self, haystack_img, debug_mode = None):
-        pass
     
 
-    def find(self, haystack_img, threshold=1, convert_mode=None, debug_mode=None):
+    def find(self, haystack_img, threshold=1, convert_mode=None, debug=False):
         """
         Template matching function to find needle_img inside haystack_img.
         - convert_mode: cv2 color conversion flag (e.g., cv2.COLOR_BGR2GRAY)
@@ -78,11 +74,11 @@ class Vision:
             center_y = y + int(h / 2)
             points.append((center_x, center_y))
 
-            if debug_mode:
+            if debug:
                 color = (0, 255, 0)
                 cv2.rectangle(haystack_img, (x, y), (x + w, y + h), color, 2)
 
-        if 'match' in debug_mode:
+        if debug:
             cv2.imshow('Matches', haystack_img)
             cv2.waitKey(1)
 

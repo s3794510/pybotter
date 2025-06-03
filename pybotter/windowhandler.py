@@ -186,6 +186,15 @@ class WindowHandler:
             log("[WARNING]", f"The target window '{self.window_name}' has invalid dimensions (w={w}, h={h}).")
             return None
 
+        # Get client area position relative to window
+        client_rect = win32gui.GetClientRect(self.hwnd)  # Gets client area size
+        client_pos = win32gui.ClientToScreen(self.hwnd, (0, 0))  # Get client area position in screen coordinates
+        window_pos = win32gui.GetWindowRect(self.hwnd)  # Get window position in screen coordinates
+        
+        # Calculate border offsets
+        border_left = client_pos[0] - window_pos[0]
+        border_top = client_pos[1] - window_pos[1]
+
         # Try MSS first if available and not explicitly using GDI
         if MSS_AVAILABLE and method in ('auto', 'mss'):
             try:
@@ -199,12 +208,7 @@ class WindowHandler:
                 # Convert to BGR format with minimal copying
                 img = np.asarray(screenshot)  # Zero-copy operation
                 
-                # Crop to client area if needed
-                client_rect = win32gui.GetClientRect(self.hwnd)
-                client_pos = win32gui.ClientToScreen(self.hwnd, (0, 0))
-                border_left = client_pos[0] - left
-                border_top = client_pos[1] - top
-                
+                # Crop to client area
                 if border_top + h <= img.shape[0] and border_left + w <= img.shape[1]:
                     # Use view instead of copy when possible
                     img = img[border_top:border_top + h, border_left:border_left + w]
@@ -236,9 +240,7 @@ class WindowHandler:
                     bmp_str = bmp.GetBitmapBits(True)
                     img = np.frombuffer(bmp_str, dtype=np.uint8).reshape((win_h, win_w, 4))
                     
-                    border_left = win32gui.GetClientRect(self.hwnd)[0]
-                    border_top = win32gui.GetClientRect(self.hwnd)[1]
-                    
+                    # Crop to client area
                     if border_top + h <= img.shape[0] and border_left + w <= img.shape[1]:
                         img = img[border_top:border_top + h, border_left:border_left + w]
                         return self._convert_to_bgr_gpu(img)
@@ -257,7 +259,7 @@ class WindowHandler:
             log("[ERROR]", f"Screenshot capture failed: {str(e)}")
             img = np.zeros((h, w, 3), dtype=np.uint8)
 
-        if debug and 'capture' in debug:
+        if debug:
             cv2.imshow("Captured Window", img)
             cv2.waitKey(1)
 

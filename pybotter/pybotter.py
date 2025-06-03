@@ -20,7 +20,7 @@ class PyBot:
             self.debug = debug
         self.mode = mode
         self.window_name = window_name
-        self.sleeptime = sleeptime
+        self.sleep_time = sleep_time
         self.interval = interval
 
         # Central pause switch
@@ -32,7 +32,7 @@ class PyBot:
         self.alarm_lock = threading.Lock()
         
         log("INFO", f"Object PyBot created, Window name: {self.window_name}")
-        log("INFO", f"RUNNING MODE: {self.mode}, SLEEP TIME: {self.sleeptime}s, INTERVAL: {self.interval}, DEBUG MODE: {self.debug}")
+        log("INFO", f"RUNNING MODE: {self.mode}, SLEEP TIME: {self.sleep_time}s, INTERVAL: {self.interval}, DEBUG MODE: {self.debug}")
 
     def mainloop(self, function_configs):
         """
@@ -107,7 +107,7 @@ class PyBot:
                     actions()
 
                 # handling after each cycle
-                self.bothandler.flow_handle(sleep_time=self.sleeptime, debug=self.debug)
+                self.bothandler.flow_handle(sleep_time=self.sleep_time)
             except Exception as e:
                 log("ERROR", f"Thread error: {str(e)}")
                 sleep(1)  # Prevent rapid error loops
@@ -154,7 +154,7 @@ class PyBot:
                 actions()
 
             # hanlding after each cycle
-            self.bothandler.flow_handle(sleep_time = self.sleeptime, debug = self.debug)
+            self.bothandler.flow_handle(sleep_time = self.sleep_time, debug = self.debug)
         self._after_mainloop()
         return 0
     
@@ -192,8 +192,8 @@ class PyBot:
     def show_window(self):
         self.bothandler.show_screenshot()
     
-    def update_screenshot(self, debug = ''):
-        self.bothandler.update_screenshot(debug = '')
+    def update_screenshot(self):
+        self.bothandler.update_screenshot()
 ###############################################
 # INPUT HANDLING
 ###############################################
