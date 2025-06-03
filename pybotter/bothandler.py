@@ -60,7 +60,7 @@ class BotHandler:
     }
    
     
-    def __init__(self, window_name, debug = None, mute = None, mode = None, interval = 1, pause_switch = None) -> None:
+    def __init__(self, window_name, debug = None, mute = None, mode = None, interval = 1, pause_switch = None, rate_limit = None, on_screenshot = None) -> None:
        
         # MAIN FIELDS
         self.window_name = window_name
@@ -72,6 +72,7 @@ class BotHandler:
         self.soundhandler = SoundHandler(self.soundpath)
         self.is_running = True
         self.is_pause = False
+        self.on_screenshot = on_screenshot
         
         # Performance monitoring
         self.perf_tracker = PerformanceTracker()
@@ -82,10 +83,25 @@ class BotHandler:
         self.debug = debug
         self.needle_handlers = {str:Vision}
         self.interval = interval
+        self.target_rate = 1/interval if interval else None
         self.keywait = 0.1
         self.pause_switch = pause_switch
         if self.pause_switch is None:
             log("[WARNING]", "Pause switch is not defined, pausing might not work correctly")
+        
+        # Print initial status
+        print("\n🔄 Program is Running")
+        
+        # Rate control parameters
+        self.rate_error_sum = 0
+        self.last_rate_error = 0
+        self.kp = 0.02  # Reduced from 0.1
+        self.ki = 0.001  # Reduced from 0.01
+        self.kd = 0.005  # Reduced from 0.05
+        self._current_interval = interval
+        self._interval_lock = threading.Lock()
+        self._rate_samples = []
+        self._max_samples = 10  # Number of samples for moving average
         
         # SPECIAL MODE INTERCEPTION
         if mode and "in" in mode:
@@ -184,14 +200,14 @@ class BotHandler:
         self.is_pause = True
         if self.pause_switch:
             self.pause_switch.clear()
-        print("Paused.\n")
+        print("\n⏸️  Program Paused")
         self.soundhandler.sound_pause()
 
     def unpause(self):
         self.is_pause = False
         if self.pause_switch:
             self.pause_switch.set()
-        print("Continued.\n")
+        print("\n⏩  Program Resumed")
         self.soundhandler.sound_unpause()
         pass
 
@@ -244,6 +260,7 @@ class BotHandler:
         # Unpause program
         self.is_pause = False
         self.pause_switch.set()
+        print("\n⛔ Program Stopped")
         self.soundhandler.sound_exit()
         pass
 
@@ -264,7 +281,10 @@ class BotHandler:
             if keyboard.is_pressed('f') and keyboard.is_pressed('control'):
                 current_time = time()
                 if current_time - last_trigger_time >= debounce_interval:
+                    print("\n📊 Performance Statistics:")
+                    print("="*30)
                     print_performance_stats()  # Use the new universal stats printer
+                    print("="*30 + "\n")
                     last_trigger_time = current_time
             
             sleep(self.keywait)
@@ -274,18 +294,84 @@ class BotHandler:
         self.haystack = self.window_handler.get_screenshot(debug)
         # Update screen capture FPS
         self.capture_monitor.update()
+        # Call screenshot callback if exists
+        if self.on_screenshot:
+            self.on_screenshot()
+
+    def _get_current_interval(self):
+        with self._interval_lock:
+            return self._current_interval
+
+    def _set_current_interval(self, value):
+        with self._interval_lock:
+            self._current_interval = value
+
+    def _get_smoothed_rate(self):
+        """Get smoothed rate using moving average"""
+        current_rate = self.capture_monitor.cycles_per_sec
+        self._rate_samples.append(current_rate)
+        if len(self._rate_samples) > self._max_samples:
+            self._rate_samples.pop(0)
+        return sum(self._rate_samples) / len(self._rate_samples)
+
+    def adjust_interval(self):
+        """Dynamically adjust interval using PID control"""
+        if not self.target_rate:
+            return self._get_current_interval()
+            
+        current_rate = self._get_smoothed_rate()
+        error = self.target_rate - current_rate
+        
+        # PID control with gentler adjustments
+        self.rate_error_sum = max(-5, min(5, self.rate_error_sum + error))  # Reduced anti-windup range
+        derivative = error - self.last_rate_error
+        
+        adjustment = (
+            self.kp * error +  # Proportional term
+            self.ki * self.rate_error_sum +  # Integral term
+            self.kd * derivative  # Derivative term
+        )
+        
+        # Limit maximum adjustment per cycle
+        adjustment = max(-0.1, min(0.1, adjustment))
+        
+        # Update for next iteration
+        self.last_rate_error = error
+        
+        # Adjust interval (with limits)
+        current = self._get_current_interval()
+        new_interval = max(0.001, min(1.0, current * (1 - adjustment)))
+        
+        # Smooth the transition
+        new_interval = current * 0.8 + new_interval * 0.2
+        
+        self._set_current_interval(new_interval)
+        return new_interval
+
+    def rate_control_thread(self):
+        """Thread for rate control"""
+        while self.is_running:
+            if not self.is_pause and self.target_rate:
+                self.adjust_interval()
+            sleep(0.2)  # Reduced update frequency to every 200ms
 
     def start_screenshot_updater(self, interval=1.0):
         """Start a background thread to update the screenshot at regular intervals."""
         log(message="Start a background thread to update the screenshot at regular intervals")
+        
+        # Start rate control thread
+        if self.target_rate:
+            threading.Thread(target=self.rate_control_thread, daemon=True).start()
+            log(message=f"Started rate control thread with target rate: {self.target_rate:.1f} Hz")
+
         def updater():
             while self.is_running:
                 if self.pause_switch:
                     self.pause_switch.wait()  # Respect global pause
                 self.update_screenshot(self.debug)
-                sleep(interval)
+                sleep(self._get_current_interval())
 
-        # Start the thread as a daemon so it stops with the main program
+        # Start the screenshot updater thread
         threading.Thread(target=updater, daemon=True).start()
 
     def save_current_screenshot(self, filename=None):

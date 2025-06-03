@@ -14,7 +14,6 @@ class PerformanceMonitor:
         self.samples = []
         self.last_time = time()
         self.cycles_per_sec = 0.0
-        self.avg_execution_time = 0.0
         self.total_calls = 0
         self._lock = threading.Lock()
     
@@ -36,13 +35,18 @@ class PerformanceMonitor:
             self.total_calls += 1
             return self.cycles_per_sec
 
+    @property
+    def average_cycle_time(self):
+        """Get average cycle time in seconds"""
+        return 1.0 / self.cycles_per_sec if self.cycles_per_sec > 0 else 0
+
     def get_stats(self):
         """Get current performance statistics"""
         with self._lock:
             return {
                 'name': self.name,
                 'cycles_per_sec': self.cycles_per_sec,
-                'avg_execution_time': 1.0 / self.cycles_per_sec if self.cycles_per_sec > 0 else 0,
+                'avg_execution_time': self.average_cycle_time,
                 'total_calls': self.total_calls,
                 'samples': len(self.samples)
             }
@@ -77,6 +81,12 @@ class PerformanceTracker:
         """Get performance statistics for all monitored components"""
         return {name: monitor.get_stats() for name, monitor in self.monitors.items()}
 
+    @classmethod
+    def get_all_monitors(cls):
+        """Get all registered performance monitors"""
+        instance = cls()
+        return list(instance.monitors.values())
+
 def monitor_performance(name=None):
     """Decorator to monitor performance of a function"""
     def decorator(func):
@@ -96,16 +106,21 @@ def monitor_performance(name=None):
     return decorator
 
 def print_performance_stats():
-    """Print current performance statistics for all monitored components"""
-    stats = PerformanceTracker().get_all_stats()
-    print("\nPerformance Statistics:")
-    print("-" * 50)
-    for name, data in stats.items():
-        print(f"{data['name']}:")
-        print(f"  Cycles/sec: {data['cycles_per_sec']:.1f}")
-        print(f"  Avg Execution Time: {data['avg_execution_time']*1000:.1f}ms")
-        print(f"  Total Calls: {data['total_calls']}")
-    print("-" * 50)
+    """Print performance statistics for all registered monitors."""
+    monitors = PerformanceTracker.get_all_monitors()
+    if not monitors:
+        print("No performance data available")
+        return
+
+    # Find the longest name for alignment
+    max_name_length = max(len(monitor.name) for monitor in monitors)
+    
+    # Print each monitor's stats on its own line with aligned columns
+    for monitor in monitors:
+        fps = monitor.cycles_per_sec
+        avg_time = monitor.average_cycle_time * 1000  # Convert to ms
+        name_padded = monitor.name.ljust(max_name_length)
+        print(f"🔹 {name_padded} | Rate: {fps:6.1f} Hz | Avg Time: {avg_time:6.1f} ms")
 
 def rate_limit(min_interval):
     """

@@ -4,98 +4,204 @@ import winsound, threading
 from .utils import *
 from ctypes import windll
 from time import sleep, time
+import cv2
 
 @creation_log
 class PyBot:
     
-    def __init__(self, window_name, sleep_time = 0, mode = None, debug = None, interval = 1):
+    def __init__(self, window_name, sleep_time = 0, mode = None, debug = None, interval = 1, rate_limit = None):
         '''
         window_name (str): name of the target window
         sleeptime (int): amount of seconds wait after each cycle
         debug: debug mode
+        interval: interval between screenshot captures (deprecated, use rate_limit instead)
+        rate_limit: maximum number of operations per second (e.g. 30 for 30 fps)
         '''
-        if not debug:
-            self.debug = ''
-        else:
-            self.debug = debug
+        self.debug = debug
         self.mode = mode
         self.window_name = window_name
         self.sleep_time = sleep_time
-        self.interval = interval
+        self.interval = 1/rate_limit if rate_limit else interval
+        self.rate_limit = rate_limit
+        self.screenshot_synced_functions = []
+        self._sync_functions_running = {}
+        self._sync_lock = threading.Lock()
 
         # Central pause switch
         self.pause_switch = threading.Event()
         self.pause_switch.set()  # Start unpaused
 
         # Create handlers
-        self.bothandler = BotHandler(window_name, self.debug, mode = mode, interval = interval, pause_switch = self.pause_switch)
+        self.bothandler = BotHandler(window_name, self.debug, mode = mode, interval = self.interval, 
+                                   pause_switch = self.pause_switch, rate_limit = self.rate_limit,
+                                   on_screenshot=self._run_synced_functions)
         self.alarm_lock = threading.Lock()
         
         log("INFO", f"Object PyBot created, Window name: {self.window_name}")
-        log("INFO", f"RUNNING MODE: {self.mode}, SLEEP TIME: {self.sleep_time}s, INTERVAL: {self.interval}, DEBUG MODE: {self.debug}")
+        log("INFO", f"RUNNING MODE: {self.mode}, SLEEP TIME: {self.sleep_time}s, TARGET RATE: {self.rate_limit if self.rate_limit else 1/self.interval:.1f}Hz, DEBUG MODE: {self.debug}")
+
+    def _run_synced_functions(self):
+        """Run all screenshot-synced functions if they're not already running"""
+        for func in self.screenshot_synced_functions:
+            with self._sync_lock:
+                # Skip if function is still running
+                if self._sync_functions_running.get(func, False):
+                    continue
+                self._sync_functions_running[func] = True
+
+            def wrapped_func():
+                try:
+                    func()
+                finally:
+                    with self._sync_lock:
+                        self._sync_functions_running[func] = False
+
+            thread = threading.Thread(
+                target=wrapped_func,
+                daemon=True,
+                name=f"ScreenSync_{func.__name__}"
+            )
+            thread.start()
+
+    def _before_mainloop(self):
+        """Initialize the bot before starting the main loop."""
+        # Start screenshot updater
+        self.bothandler.start_screenshot_updater(self.interval)
+        
+        # Wait for first screenshot
+        start_time = time()
+        while self.bothandler.haystack is None:
+            if time() - start_time > 5:
+                log("WARNING", "Timeout: Failed to capture initial screenshot within 5 seconds")
+                break
+            sleep(0.1)
+
+        # Configure system settings
+        if self.mode and 'awake' in self.mode:
+            self._keep_awake()
+            log("INFO", "Keeping the PC awake")
+
+    def _print_control_instructions(self):
+        """Display available hotkeys and controls."""
+        print("\n" + "="*50)
+        print("CONTROL INSTRUCTIONS:")
+        print("="*50)
+        print("  ⏯  Ctrl + CapsLock       ")
+        print("  ⏯  Ctrl + P        Pause/Unpause")
+        print("  ⌕  Ctrl + F        Show performance stats")
+        print("  ◼  Ctrl + ESC      ")
+        print("  ◼  Ctrl + Space    Exit program")
+        print("="*50 + "\n")
 
     def mainloop(self, function_configs):
         """
         Run multiple functions in separate threads.
         
         Args:
-            function_configs: list of tuples (function, thread_count)
-            Example: [(function1, 2), (function2, 1)] - runs function1 in 2 threads and function2 in 1 thread
+            function_configs: list of tuples in one of these formats:
+                - (function, thread_count): Run function in thread_count threads with sleep_time delay
+                - (function, thread_count, "screenshot_sync"): Run function in sync with screenshot updates
         """
-        # Before Main Loop
+        self._initialize_threads(function_configs)
+        self._monitor_threads()
+        self._after_mainloop()
+        return 0
+
+    def _initialize_threads(self, function_configs):
+        """Initialize and start all threads based on configuration."""
+        # Process configurations
+        normal_configs = []
+        sync_functions = []
+        
+        # Parse configurations
+        log("INFO", "Initializing thread configuration...")
+        for config in function_configs:
+            if len(config) == 3 and config[2] == "screenshot_sync":
+                func, count = config[:2]
+                sync_functions.append((func, count))
+                for _ in range(count):
+                    self.screenshot_synced_functions.append(func)
+            else:
+                normal_configs.append(config[:2])
+
+        # Initialize bot systems
         self._before_mainloop()
+        self.threads = []
+        self.thread_functions = {}
 
-        # Create and start threads
-        threads = []
-        thread_functions = {}  # Keep track of which function each thread is running
+        # Log and start screenshot-sync functions
+        if sync_functions:
+            log("INFO", "Screenshot-sync functions:")
+            for func, count in sync_functions:
+                thread_name = f"ScreenSync_{func.__name__}"
+                log("INFO", f"- {func.__name__} (Threads: {count}, Name: {thread_name})")
 
-        for func, thread_count in function_configs:
-            func_name = func.__name__  # Get the function name
-            for thread_num in range(thread_count):
-                # Create thread name: function_name_N (where N is the thread number if there are multiple)
-                thread_name = f"{func_name}" if thread_count == 1 else f"{func_name}_{thread_num + 1}"
-                thread = threading.Thread(
-                    target=self._thread_loop,
-                    args=(func,),
-                    daemon=True,
-                    name=thread_name
-                )
-                threads.append(thread)
-                thread_functions[thread] = (func, thread_count)
-                thread.start()
-                log("INFO", f"Started thread: {thread_name}")
+        # Log and start normal threaded functions
+        if normal_configs:
+            log("INFO", "Normal threaded functions:")
+            for func, thread_count in normal_configs:
+                func_name = func.__name__
+                thread_names = [f"{func_name}" if thread_count == 1 else f"{func_name}_{i+1}" 
+                              for i in range(thread_count)]
+                log("INFO", f"- {func_name} (Threads: {thread_count}, Name: {', '.join(thread_names)})")
+                
+                for thread_num in range(thread_count):
+                    thread = threading.Thread(
+                        target=self._thread_loop,
+                        args=(func,),
+                        daemon=True,
+                        name=thread_names[thread_num]
+                    )
+                    self.threads.append(thread)
+                    self.thread_functions[thread] = (func, thread_count)
+                    thread.start()
 
-        # Wait for threads to complete or program to exit
+        # Log final summary
+        total_threads = len(self.threads) + sum(count for _, count in sync_functions)
+        log("INFO", f"Thread initialization complete. Total threads: {total_threads}")
+        
+        # Print control instructions after all initialization is done
+        self._print_control_instructions()
+
+    def _monitor_threads(self):
+        """Monitor and maintain running threads."""
         try:
             while self.bothandler.is_running:
-                # Check if any thread has died unexpectedly
-                alive_threads = [t for t in threads if t.is_alive()]
-                if len(alive_threads) < len(threads):
-                    log("WARNING", "Some bot threads have died unexpectedly")
-                    # Restart dead threads with their original functions
-                    dead_threads = set(threads) - set(alive_threads)
-                    for dead_thread in dead_threads:
-                        func, thread_count = thread_functions[dead_thread]
-                        # Recreate thread with same name
-                        new_thread = threading.Thread(
-                            target=self._thread_loop,
-                            args=(func,),
-                            daemon=True,
-                            name=dead_thread.name
-                        )
-                        alive_threads.append(new_thread)
-                        thread_functions[new_thread] = thread_functions[dead_thread]
-                        new_thread.start()
-                        log("INFO", f"Restarted thread: {new_thread.name}")
-                    threads = alive_threads
-                sleep(1)  # Check thread status every second
+                alive_threads = [t for t in self.threads if t.is_alive()]
+                dead_threads = set(self.threads) - set(alive_threads)
+                
+                if dead_threads:
+                    self._restart_dead_threads(dead_threads, alive_threads)
+                sleep(1)
         except KeyboardInterrupt:
             log("INFO", "Received keyboard interrupt, stopping threads...")
             self.bothandler.is_running = False
 
-        # After Main Loop, End Task
-        self._after_mainloop()
-        return 0
+    def _restart_dead_threads(self, dead_threads, alive_threads):
+        """Restart any dead threads."""
+        log("WARNING", f"Found {len(dead_threads)} dead threads, restarting them...")
+        for dead_thread in dead_threads:
+            func, thread_count = self.thread_functions[dead_thread]
+            log("INFO", f"Thread {dead_thread.name} died, restarting...")
+            
+            new_thread = threading.Thread(
+                target=self._thread_loop,
+                args=(func,),
+                daemon=True,
+                name=dead_thread.name
+            )
+            alive_threads.append(new_thread)
+            self.thread_functions[new_thread] = self.thread_functions[dead_thread]
+            new_thread.start()
+            log("INFO", f"Restarted thread: {new_thread.name}")
+        
+        self.threads = alive_threads
+
+    def _after_mainloop(self):
+        """Clean up after main loop ends."""
+        log("INFO", "Shutting down bot...")
+        cv2.destroyAllWindows()
+        sleep(1)
 
     def _thread_loop(self, actions):
         """Individual thread loop that runs the bot actions"""
@@ -117,55 +223,6 @@ class PyBot:
         ES_SYSTEM_REQUIRED = 0x00000001
         ES_DISPLAY_REQUIRED = 0x00000002
         windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
-
-    def _before_mainloop(self):
-        # Start updating screenshots of target window
-        self.bothandler.start_screenshot_updater(self.interval)
-        # Wait for first screenshot to be captured
-        start_time = time()
-        while self.bothandler.haystack is None:
-            if time() - start_time > 5:
-                log("[WARNING]", "Timeout: Failed to capture initial screenshot within 5 seconds")
-                break
-            sleep(0.1)  # Avoid CPU overuse
-
-        # Set the computer to keep being awake
-        if self.mode:
-            if 'awake' in self.mode:
-                self._keep_awake()
-                log("INFO", "Keeping the PC awake.")
-
-        # Start program text
-        print("""Hold Ctrl + ESC to stop
-        Hold Ctrl + P to pause/unpause.
-        Hold Ctrl + F to show FPS
-        Program is running.
-        """)
-
-    def _runmainloop(self, actions):
-        """
-        Running the main loop
-        """
-        while(self.bothandler.is_running):   
-
-            # Pause handling
-            if not self.bothandler.is_pause:
-                # Put the actions (mouse/keyboard) inside function actions in this class
-                actions()
-
-            # hanlding after each cycle
-            self.bothandler.flow_handle(sleep_time = self.sleep_time, debug = self.debug)
-        self._after_mainloop()
-        return 0
-    
-    def _after_mainloop(self):
-        """
-        Closing the program
-        """
-        log(message="Closing the program")
-        self.bothandler.destroyAllWindows()
-        sleep(1)
-        return 0
 
     def variables(self, func):
         """
