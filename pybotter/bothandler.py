@@ -140,7 +140,7 @@ class BotHandler:
         if typeneedle is not Vision:
             raise(Exception("Needle image not found, actual Type:",typeneedle))
         if self.check_needle_fit_haystack(name): 
-            return needle.find(self.haystack, threshold, convert_mode= convert,debug_mode=self.debug)
+            return needle.find(self.haystack, threshold, convert_mode= convert,debug=self.debug)
         raise Exception("UNEXPECTED ERROR")
 
     def keyboard_press(self, key, duration):
@@ -155,7 +155,7 @@ class BotHandler:
             SendInputMouse.click_at_current_to_window(self.hwnd, duration)
 
 
-    def flow_handle(self, sleep_time = 0, debug = 'regular'):
+    def flow_handle(self, sleep_time = 0):
         sleep(sleep_time)
         # Pause handling
         if self.pause_switch:
@@ -170,17 +170,7 @@ class BotHandler:
         # Update bot logic FPS
         self.bot_monitor.update()
 
-    # def init(self):
-    #     self.soundhandler.sound_start()
-    #     # init threads
-    #     self.pause_handle_thread()
-    #     self._exit_key_combos = [['esc', 'control'], ['ctrl', 'space']]
-    #     self.exit_handle_thread(self._exit_key_combos)
-    #     self.show_fps_handle_thread()
 
-        # initialize the Vision class
-        #self.area_img = Vision('areasxx.jpg')
-        #self.teleport_img = Vision('teleport.jpg')
 
     def resize(self, x, y):
         return self.window_handler.window_resize(x, y)

@@ -8,7 +8,7 @@ from time import sleep, time
 @creation_log
 class PyBot:
     
-    def __init__(self, window_name, sleeptime = 0, mode = None, debug = None, interval = 1):
+    def __init__(self, window_name, sleep_time = 0, mode = None, debug = None, interval = 1):
         '''
         window_name (str): name of the target window
         sleeptime (int): amount of seconds wait after each cycle
