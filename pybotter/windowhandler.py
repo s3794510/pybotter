@@ -27,7 +27,7 @@ class WindowHandler:
         self.window_name = window_name
         self.hwnd = None
         self.find_window()
-        self.w, self.h = -1, -1
+        self.w, self.h = 0, 0
         self.get_window_size()
         self.mss_instance = mss.mss() if MSS_AVAILABLE else None
         self.last_window_rect = None
@@ -139,22 +139,37 @@ class WindowHandler:
 
     def get_window_size(self):
         # Get the client area size (exclude borders, title bar)
-        if (self.hwnd is None or self.hwnd == 0):
-            self.hwnd = win32gui.GetDesktopWindow()
+        if self.hwnd is None or self.hwnd == 0:
+            log("[WARNING]", "Window handle is invalid")
+            return
         rect = win32gui.GetClientRect(self.hwnd)
         w = rect[2] - rect[0]
         h = rect[3] - rect[1]
-        if w != self.w or h != self.h:
+        if (w != self.w or h != self.h) and self.w != 0 and self.h != 0:
             log("[INFO]", f"Window size is changed to: {w}, {h}")
         self.w, self.h = w, h
 
     def find_window(self):
+        """Find and validate window handle with improved error handling."""
         if self.window_name is None:
             self.hwnd = win32gui.GetDesktopWindow()
-        else:
+            log("[INFO]", f"Window handle is changed to the desktop window with handle {self.hwnd}")
+            return
+
+        # Try to find the window
+        try:
             self.hwnd = win32gui.FindWindow(None, self.window_name)
-            # if not self.hwnd:
-            #     raise Exception('Window not found: {}'.format(self.window_name))
+            
+            # Validate found window
+            if not self.hwnd or not win32gui.IsWindow(self.hwnd):
+                log("[WARNING]", f"Window '{self.window_name}' not found or invalid")
+                self.hwnd = 0  # Use 0 for invalid handle
+            else:
+                log("[INFO]", f"Found window '{self.window_name}' with handle {self.hwnd}")
+                
+        except Exception as e:
+            log("[ERROR]", f"Error finding window: {e}")
+            self.hwnd = 0  # Use 0 for invalid handle
 
     def get_screenshot(self, debug=False, method='auto'):
         """
@@ -183,7 +198,7 @@ class WindowHandler:
             self.last_check_time = current_time
 
         if w == 0 or h == 0:
-            log("[WARNING]", f"The target window '{self.window_name}' has invalid dimensions (w={w}, h={h}).")
+            log("[WARNING]", f"Window '{self.window_name}': invalid dimensions (w={w}, h={h}) or is minimized.")
             return None
 
         # Get client area position relative to window

@@ -1,6 +1,6 @@
 from .bothandler import BotHandler
 from .windowhandler import WindowHandler
-import winsound, threading
+import threading
 from .utils import *
 from ctypes import windll
 from time import sleep, time
@@ -38,8 +38,8 @@ class PyBot:
         self.alarm_lock = threading.Lock()
         
         log("INFO", f"Object PyBot created, Window name: {self.window_name}")
-        log("INFO", f"RUNNING MODE: {self.mode}, SLEEP TIME: {self.sleep_time}s, TARGET RATE: {self.rate_limit if self.rate_limit else 1/self.interval:.1f}Hz, DEBUG MODE: {self.debug}")
-
+        log("INFO", f"RUNNING MODE: '{self.mode}', DEBUG MODE: {self.debug}")
+        log("INFO", f"TARGET RATE: {self.rate_limit if self.rate_limit else 1/self.interval:.1f}Hz, SLEEP TIME: {self.sleep_time}s")
     def _run_synced_functions(self):
         """Run all screenshot-synced functions if they're not already running"""
         for func in self.screenshot_synced_functions:
@@ -68,13 +68,29 @@ class PyBot:
         # Start screenshot updater
         self.bothandler.start_screenshot_updater(self.interval)
         
-        # Wait for first screenshot
+        # Wait for window to be ready
+        log("INFO", "Waiting for the window to be ready...")
+        max_wait_time = 30  # Maximum seconds to wait for window
         start_time = time()
-        while self.bothandler.haystack is None:
-            if time() - start_time > 5:
-                log("WARNING", "Timeout: Failed to capture initial screenshot within 5 seconds")
+        
+        while not self.bothandler.is_window_ready:
+            if time() - start_time > max_wait_time:
+                log("WARNING", f"Timeout waiting for window '{self.bothandler.window_name}'. The bot will continue running and wait for the window.")
                 break
+            
             sleep(0.1)
+            
+        if self.bothandler.is_window_ready:
+            log("INFO", f"Window '{self.bothandler.window_name}' is ready!")
+            
+            # Wait for first screenshot
+            screenshot_timeout = 3  # Seconds to wait for first screenshot
+            screenshot_start = time()
+            while self.bothandler.haystack is None:
+                if time() - screenshot_start > screenshot_timeout:
+                    log("WARNING", "Timeout waiting for first screenshot. The bot will continue running.")
+                    break
+                sleep(0.1)
 
         # Configure system settings
         if self.mode and 'awake' in self.mode:
@@ -93,7 +109,14 @@ class PyBot:
         print("  ◼  Ctrl + Space    Exit program")
         print("="*50 + "\n")
 
-    def mainloop(self, function_configs):
+    def _mainloop(self):
+        """Main loop that initializes and monitors threads."""
+        if not self.bothandler.is_window_ready:
+            log("WARNING", "Starting main loop without window. Bot functions will wait for window to be ready.")
+        self._initialize_threads(self.function_configs)
+        self._monitor_threads()
+
+    def run(self, function_configs):
         """
         Run multiple functions in separate threads.
         
@@ -102,9 +125,16 @@ class PyBot:
                 - (function, thread_count): Run function in thread_count threads with sleep_time delay
                 - (function, thread_count, "screenshot_sync"): Run function in sync with screenshot updates
         """
-        self._initialize_threads(function_configs)
-        self._monitor_threads()
-        self._after_mainloop()
+        try:
+            self.function_configs = function_configs
+            self._before_mainloop()
+            self._mainloop()
+        except Exception as e:
+            log("ERROR", f"Bot error: {str(e)}")
+            self.bothandler.is_running = False
+            raise
+        finally:
+            self._after_mainloop()
         return 0
 
     def _initialize_threads(self, function_configs):
@@ -125,7 +155,6 @@ class PyBot:
                 normal_configs.append(config[:2])
 
         # Initialize bot systems
-        self._before_mainloop()
         self.threads = []
         self.thread_functions = {}
 
@@ -159,7 +188,10 @@ class PyBot:
         # Log final summary
         total_threads = len(self.threads) + sum(count for _, count in sync_functions)
         log("INFO", f"Thread initialization complete. Total threads: {total_threads}")
-        
+
+        # Print initial status
+        print("\n🔄 Program is Running")
+
         # Print control instructions after all initialization is done
         self._print_control_instructions()
 
@@ -251,6 +283,29 @@ class PyBot:
     
     def update_screenshot(self):
         self.bothandler.update_screenshot()
+
+        
+    def is_window_ready(self):
+        """Check if the target window is ready for interaction."""
+        return self.bothandler.is_window_ready
+
+    def wait_for_window(self, timeout=None):
+        """
+        Wait for the window to become ready.
+        
+        Args:
+            timeout (float, optional): Maximum seconds to wait. None means wait forever.
+            
+        Returns:
+            bool: True if window is ready, False if timeout occurred
+        """
+        start_time = time()
+        while not self.bothandler.is_window_ready:
+            if timeout and time() - start_time > timeout:
+                return False
+            sleep(0.1)
+        return True
+
 ###############################################
 # INPUT HANDLING
 ###############################################

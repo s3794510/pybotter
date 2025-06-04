@@ -66,11 +66,20 @@ class BotHandler:
         self.window_name = window_name
         self.soundpath = os.path.join(os.path.dirname(__file__),'sound')
         self.hwnd = None
+        self.is_running = True  # Keep running while waiting for window
+        self.is_window_ready = False  # New flag to track window state
+        
+        # Try to find the window first
         self.get_window_handle()
+        if not self.hwnd or not win32gui.IsWindow(self.hwnd):
+            log("[WARNING]", f"Window '{window_name}' not found initially. Will keep trying...")
+        else:
+            self.is_window_ready = True
+            
+        # Continue with initialization
         self.s = sched.scheduler(time, sleep)
         self.window_handler = WindowHandler(self.window_name)
         self.soundhandler = SoundHandler(self.soundpath)
-        self.is_running = True
         self.is_pause = False
         self.on_screenshot = on_screenshot
         
@@ -88,9 +97,6 @@ class BotHandler:
         self.pause_switch = pause_switch
         if self.pause_switch is None:
             log("[WARNING]", "Pause switch is not defined, pausing might not work correctly")
-        
-        # Print initial status
-        print("\n🔄 Program is Running")
         
         # Rate control parameters
         self.rate_error_sum = 0
@@ -141,10 +147,9 @@ class BotHandler:
         if self.needle_handlers.get(name) != None:
             raise Exception("Needle image name already existed")
         if self.check_file_exist(path):
-            self.needle_handlers.update({name:Vision(path)})
+            self.needle_handlers.update({name:Vision(path, name = name)})
             if self.needle_handlers.get(name) == None:
                 raise Exception("Needle image returns a NULL value")
-            log(message= f"Image added: {name}")
             return self.needle_handlers.get(name)
 
         raise Exception("Unexpected Error")
@@ -152,11 +157,11 @@ class BotHandler:
     def find_image(self, name, threshold, convert = None):
         "convert method = COLOR_BGR2GRAY"
         needle = self.needle_handlers.get(name)
-        typeneedle = type(needle)
-        if typeneedle is not Vision:
-            raise(Exception("Needle image not found, actual Type:",typeneedle))
-        if self.check_needle_fit_haystack(name): 
-            return needle.find(self.haystack, threshold, convert_mode= convert,debug=self.debug)
+        # typeneedle = type(needle)
+        # if typeneedle is not Vision:
+        #     raise(Exception("Needle image not found, actual Type:",typeneedle))
+        # if self.check_needle_fit_haystack(name): 
+        return needle.find(self.haystack, threshold, convert_mode= convert,debug=self.debug)
         raise Exception("UNEXPECTED ERROR")
 
     def keyboard_press(self, key, duration):
@@ -166,10 +171,41 @@ class BotHandler:
         win32api.PostMessage(self.hwnd, win32con.WM_KEYUP, keycode, 0)
         return 0
 
-    def leftclick(self, x = None, y = None, duration=0.1):
-        if x is None or y is None:
-            SendInputMouse.click_at_current_to_window(self.hwnd, duration)
+    def leftclick(self, x=None, y=None, duration=0.1):
+        """Perform a left click with window handle validation."""
+        # Don't try to click if window isn't ready
+        if not self.is_window_ready:
+            log("[WARNING]", "Cannot click - waiting for window to be ready")
+            return False
+            
+        if not win32gui.IsWindow(self.hwnd) or self.hwnd == 0:
+            log("[WARNING]", "Window handle invalid, attempting to recover...")
+            self.get_window_handle()
+            if not win32gui.IsWindow(self.hwnd):
+                log("[ERROR]", f"Failed to recover window handle for '{self.window_name}'")
+                self.is_window_ready = False
+                return False
 
+        # If x and y are not provided, click at current cursor position
+        if x is None or y is None:
+            # Try the click operation
+            success = SendInputMouse.click_at_current_to_window(self.hwnd, duration)
+            if not success:
+                # If click failed, try to recover window handle and retry once
+                self.get_window_handle()
+                if win32gui.IsWindow(self.hwnd):
+                    return SendInputMouse.click_at_current_to_window(self.hwnd, duration)
+            return success
+        ## NOT DEFINED YET
+        # If x and y are provided, click at the specified position
+        else:
+            #success = SendInputMouse.click_at_to_window(self.hwnd, x, y, duration)
+            if not success:
+                # If click failed, try to recover window handle and retry once
+                self.get_window_handle()
+                if win32gui.IsWindow(self.hwnd):
+                    return SendInputMouse.click_at_current_to_window(self.hwnd, duration)
+            return success
 
     def flow_handle(self, sleep_time = 0):
         sleep(sleep_time)
@@ -357,22 +393,48 @@ class BotHandler:
 
     def start_screenshot_updater(self, interval=1.0):
         """Start a background thread to update the screenshot at regular intervals."""
-        log(message="Start a background thread to update the screenshot at regular intervals")
+        log(message="Starting screenshot updater thread")
         
         # Start rate control thread
         if self.target_rate:
             threading.Thread(target=self.rate_control_thread, daemon=True).start()
             log(message=f"Started rate control thread with target rate: {self.target_rate:.1f} Hz")
 
-        def updater():
+        def screenshot_updater():
+            retry_interval = 1.0  # Time between window check attempts
+            last_retry = 0
+            
             while self.is_running:
+                current_time = time()
+                
+                # If window is not ready, try to find it
+                if not self.is_window_ready:
+                    if current_time - last_retry >= retry_interval:
+                        self.get_window_handle()
+                        if self.hwnd and win32gui.IsWindow(self.hwnd):
+                            log("[INFO]", f"Found window '{self.window_name}'")
+                            self.is_window_ready = True
+                        else:
+                            log("[INFO]", f"Still waiting for window '{self.window_name}'...")
+                        last_retry = current_time
+                    sleep(0.1)  # Short sleep while waiting
+                    continue
+                
+                # Check if window is still valid
+                if not win32gui.IsWindow(self.hwnd):
+                    log("[WARNING]", f"Lost connection to window '{self.window_name}'. Will try to reconnect...")
+                    self.is_window_ready = False
+                    continue
+                
+                # Normal screenshot update when window is ready
                 if self.pause_switch:
                     self.pause_switch.wait()  # Respect global pause
                 self.update_screenshot(self.debug)
                 sleep(self._get_current_interval())
 
         # Start the screenshot updater thread
-        threading.Thread(target=updater, daemon=True).start()
+        threading.Thread(target=screenshot_updater, daemon=True).start()
+        return True
 
     def save_current_screenshot(self, filename=None):
         """

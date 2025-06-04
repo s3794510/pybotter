@@ -14,9 +14,10 @@ class Vision:
     method = None
 
     # constructor
-    def __init__(self, needle_img_path, method=cv2.TM_CCOEFF_NORMED):
+    def __init__(self, needle_img_path, name = None, method=cv2.TM_CCOEFF_NORMED):
         # load the image we're trying to match
         # https://docs.opencv.org/4.2.0/d4/da8/group__imgcodecs.html
+        self.name = name
         self.needle_img_path = needle_img_path
         self.needle_img = cv2.imread(self.needle_img_path, cv2.IMREAD_UNCHANGED)
         # Save the dimensions of the needle image

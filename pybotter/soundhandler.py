@@ -89,7 +89,7 @@ class SoundHandler:
                         (1000, 50), (1200, 50), (1500, 50)
                     ],
                     1: [  # Single beep
-                        (1000, 50)
+                        (150, 100)
                     ],
                     2: [  # Warning
                         (800, 100), (1000, 100), (1200, 100)
@@ -110,7 +110,7 @@ class SoundHandler:
                 sequence = alarm_sequences.get(mode, alarm_sequences[0])
                 for freq, dur in sequence:
                     winsound.Beep(freq, dur)
-                    sleep(0.1)
+                    sleep(0.03)
             finally:
                 self.alarm_lock.release()  # Ensure lock is released
 

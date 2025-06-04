@@ -159,14 +159,19 @@ def log(level = "INFO", message = "Unexpected issue occurred"):
 def creation_log(cls):
     """
     Decorator to log the creation of a class instance.
+    If the instance has a 'name' attribute, it will be included in the log.
     """
     original_init = cls.__init__
 
     @wraps(original_init)
     def new_init(self, *args, **kwargs):
-        log("INFO", f"Creating instance of {cls.__name__} ...")
         original_init(self, *args, **kwargs)
-        log("INFO", f"Instance of {cls.__name__} created")
+        # Check if instance has a name attribute
+        instance_name = getattr(self, 'name', None)
+        if instance_name:
+            log("INFO", f"Instance of {cls.__name__} created: {instance_name}")
+        else:
+            log("INFO", f"Instance of {cls.__name__} created")
 
     cls.__init__ = new_init
     return cls

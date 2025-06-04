@@ -71,20 +71,48 @@ class SendInputMouse:
     @staticmethod
     def click_at_current_to_window(hwnd, duration=0.05):
         """Send a real click at the current position to the foreground window using SendInput."""
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(hwnd)
+        try:
+            # Validate window handle
+            if not win32gui.IsWindow(hwnd):
+                log("[ERROR]", f"Invalid window handle: {hwnd}")
+                return False
 
-        down = INPUT()
-        down.type = INPUT_MOUSE
-        down.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTDOWN, 0, None)
+            # Try to show and activate window
+            try:
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            except Exception as e:
+                log("[WARNING]", f"Failed to show window: {e}")
 
-        up = INPUT()
-        up.type = INPUT_MOUSE
-        up.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
+            # Try multiple times to set foreground window
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                    break
+                except Exception as e:
+                    if attempt == max_attempts - 1:
+                        log("[ERROR]", f"Failed to set foreground window after {max_attempts} attempts: {e}")
+                        # Continue with click anyway
+                    else:
+                        sleep(0.1)  # Short delay between attempts
 
-        ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
-        sleep(duration)
-        ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
+            # Perform the click
+            down = INPUT()
+            down.type = INPUT_MOUSE
+            down.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTDOWN, 0, None)
+
+            up = INPUT()
+            up.type = INPUT_MOUSE
+            up.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
+
+            ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
+            sleep(duration)
+            ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
+            return True
+
+        except Exception as e:
+            log("[ERROR]", f"Failed to perform click operation: {e}")
+            return False
 
 @creation_log
 class InterceptionMouse:
