@@ -69,28 +69,18 @@ class PyBot:
         self.bothandler.start_screenshot_updater(self.interval)
         
         # Wait for window to be ready
-        log("INFO", "Waiting for the window to be ready...")
-        max_wait_time = 30  # Maximum seconds to wait for window
-        start_time = time()
+        log("INFO", f"Waiting for window '{self.bothandler.window_name}'...")
         
         while not self.bothandler.is_window_ready:
-            if time() - start_time > max_wait_time:
-                log("WARNING", f"Timeout waiting for window '{self.bothandler.window_name}'. The bot will continue running and wait for the window.")
-                break
-            
             sleep(0.1)
             
-        if self.bothandler.is_window_ready:
-            log("INFO", f"Window '{self.bothandler.window_name}' is ready!")
+        log("INFO", f"Window '{self.bothandler.window_name}' is ready!")
+        
+        # Wait for first screenshot
+        while self.bothandler.haystack is None:
+            sleep(0.1)
             
-            # Wait for first screenshot
-            screenshot_timeout = 3  # Seconds to wait for first screenshot
-            screenshot_start = time()
-            while self.bothandler.haystack is None:
-                if time() - screenshot_start > screenshot_timeout:
-                    log("WARNING", "Timeout waiting for first screenshot. The bot will continue running.")
-                    break
-                sleep(0.1)
+        log("INFO", "First screenshot captured successfully!")
 
         # Configure system settings
         if self.mode and 'awake' in self.mode:

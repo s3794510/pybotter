@@ -26,12 +26,22 @@ class WindowHandler:
         """
         self.window_name = window_name
         self.hwnd = None
-        self.find_window()
         self.w, self.h = 0, 0
-        self.get_window_size()
-        self.mss_instance = mss.mss() if MSS_AVAILABLE else None
         self.last_window_rect = None
         self.last_check_time = 0
+        self.last_window_check = 0
+        self.window_check_interval = 0.1  # How often to check window state (seconds)
+        
+        # Window state tracking
+        self.is_valid = False
+        self.is_minimized = False
+        self.last_error = None
+        
+        # Initialize window handle
+        self._update_window_state()
+        
+        # MSS setup
+        self.mss_instance = mss.mss() if MSS_AVAILABLE else None
         
         # GPU setup with unified memory approach
         self.use_gpu = use_gpu
@@ -42,7 +52,6 @@ class WindowHandler:
         self.gpu_input_mat = None
         self.gpu_output_mat = None
         
-        log("[INFO]", f"Window size is: {self.w}, {self.h}")
 
     def _setup_gpu(self, preferred_backend='auto'):
         """
@@ -137,39 +146,66 @@ class WindowHandler:
             log("[WARNING]", f"GPU conversion failed, falling back to CPU: {str(e)}")
             return cv2.cvtColor(img_bgra, cv2.COLOR_BGRA2BGR)
 
-    def get_window_size(self):
-        # Get the client area size (exclude borders, title bar)
-        if self.hwnd is None or self.hwnd == 0:
-            log("[WARNING]", "Window handle is invalid")
-            return
-        rect = win32gui.GetClientRect(self.hwnd)
-        w = rect[2] - rect[0]
-        h = rect[3] - rect[1]
-        if (w != self.w or h != self.h) and self.w != 0 and self.h != 0:
-            log("[INFO]", f"Window size is changed to: {w}, {h}")
-        self.w, self.h = w, h
+    def _update_window_state(self):
+        """Centralized window state update."""
+        current_time = time()
+        
+        # Only check window state periodically
+        if current_time - self.last_window_check < self.window_check_interval:
+            return self.is_valid
 
-    def find_window(self):
-        """Find and validate window handle with improved error handling."""
-        if self.window_name is None:
-            self.hwnd = win32gui.GetDesktopWindow()
-            log("[INFO]", f"Window handle is changed to the desktop window with handle {self.hwnd}")
-            return
-
-        # Try to find the window
+        self.last_window_check = current_time
+        
         try:
-            self.hwnd = win32gui.FindWindow(None, self.window_name)
-            
-            # Validate found window
+            # Find window if needed
             if not self.hwnd or not win32gui.IsWindow(self.hwnd):
-                log("[WARNING]", f"Window '{self.window_name}' not found or invalid")
-                self.hwnd = 0  # Use 0 for invalid handle
-            else:
-                log("[INFO]", f"Found window '{self.window_name}' with handle {self.hwnd}")
-                
+                if self.window_name is None:
+                    self.hwnd = win32gui.GetDesktopWindow()
+                    log("[INFO]", "Using desktop window")
+                else:
+                    self.hwnd = win32gui.FindWindow(None, self.window_name)
+
+            # Validate window
+            if not self.hwnd or not win32gui.IsWindow(self.hwnd):
+                if self.is_valid:  # Only log if state changed
+                    log("[WARNING]", f"Lost connection to window '{self.window_name}'")
+                self.is_valid = False
+                self.hwnd = 0
+                return False
+
+            # Check if window is minimized
+            placement = win32gui.GetWindowPlacement(self.hwnd)
+            was_minimized = self.is_minimized
+            self.is_minimized = placement[1] == win32con.SW_SHOWMINIMIZED
+            
+            if self.is_minimized != was_minimized:
+                log("[INFO]", f"Window '{self.window_name}' {'minimized' if self.is_minimized else 'restored'}")
+
+            # Update window size
+            rect = win32gui.GetClientRect(self.hwnd)
+            new_w = rect[2] - rect[0]
+            new_h = rect[3] - rect[1]
+            
+            if new_w != self.w or new_h != self.h:
+                self.w, self.h = new_w, new_h
+                if self.w > 0 and self.h > 0:
+                    log("[INFO]", f"Window size updated: {self.w}x{self.h}")
+
+            # Update valid state
+            was_valid = self.is_valid
+            self.is_valid = True
+            if not was_valid:  # Only log if state changed
+                log("[INFO]", f"Connected to window '{self.window_name}' (handle: {self.hwnd})")
+
+            return True
+
         except Exception as e:
-            log("[ERROR]", f"Error finding window: {e}")
-            self.hwnd = 0  # Use 0 for invalid handle
+            if str(e) != self.last_error:  # Only log if error changed
+                log("[ERROR]", f"Window state update failed: {e}")
+                self.last_error = str(e)
+            self.is_valid = False
+            self.hwnd = 0
+            return False
 
     def get_screenshot(self, debug=False, method='auto'):
         """
@@ -179,106 +215,97 @@ class WindowHandler:
             method: 'auto', 'mss', or 'gdi'
         Returns: BGR format numpy array
         """
-        w, h = self.w, self.h
+        # Update window state
+        if not self._update_window_state():
+            return np.zeros((self.h or 1, self.w or 1, 3), dtype=np.uint8)
 
-        # Validate window handle
-        if not win32gui.IsWindow(self.hwnd) or self.hwnd == win32gui.GetDesktopWindow():
-            log("[INFO]", f"Window handle invalid (hwnd={self.hwnd}). Trying to find the window again...")
-            self.find_window()
-            if not self.hwnd or not win32gui.IsWindow(self.hwnd):
-                self.get_window_size()
-                log("[ERROR]", f"Window '{self.window_name}' not found or not accessible.")
-                return np.zeros((h, w, 3), dtype=np.uint8)
-
-        # Update window size and position (throttled)
-        current_time = datetime.now().timestamp()
-        if self.last_window_rect is None or current_time - self.last_check_time > 0.1:
-            self.get_window_size()
-            self.last_window_rect = win32gui.GetWindowRect(self.hwnd)
-            self.last_check_time = current_time
-
-        if w == 0 or h == 0:
-            log("[WARNING]", f"Window '{self.window_name}': invalid dimensions (w={w}, h={h}) or is minimized.")
-            return None
+        if self.is_minimized:
+            return np.zeros((self.h, self.w, 3), dtype=np.uint8)
 
         # Get client area position relative to window
-        client_rect = win32gui.GetClientRect(self.hwnd)  # Gets client area size
-        client_pos = win32gui.ClientToScreen(self.hwnd, (0, 0))  # Get client area position in screen coordinates
-        window_pos = win32gui.GetWindowRect(self.hwnd)  # Get window position in screen coordinates
-        
-        # Calculate border offsets
-        border_left = client_pos[0] - window_pos[0]
-        border_top = client_pos[1] - window_pos[1]
-
-        # Try MSS first if available and not explicitly using GDI
-        if MSS_AVAILABLE and method in ('auto', 'mss'):
-            try:
-                # Get the window bounds
-                left, top, right, bottom = self.last_window_rect
-                
-                # Capture the region
-                monitor = {"top": top, "left": left, "width": right - left, "height": bottom - top}
-                screenshot = self.mss_instance.grab(monitor)
-                
-                # Convert to BGR format with minimal copying
-                img = np.asarray(screenshot)  # Zero-copy operation
-                
-                # Crop to client area
-                if border_top + h <= img.shape[0] and border_left + w <= img.shape[1]:
-                    # Use view instead of copy when possible
-                    img = img[border_top:border_top + h, border_left:border_left + w]
-                    return self._convert_to_bgr_gpu(img)
-                
-            except Exception as e:
-                if method == 'mss':
-                    log("[ERROR]", f"MSS screenshot failed: {str(e)}")
-                    return np.zeros((h, w, 3), dtype=np.uint8)
-
-        # GDI method (fallback)
         try:
-            hwndDC = win32gui.GetWindowDC(self.hwnd)
-            srcDC = win32ui.CreateDCFromHandle(hwndDC)
-            memDC = srcDC.CreateCompatibleDC()
+            # Get client area position relative to window
+            client_rect = win32gui.GetClientRect(self.hwnd)  # Gets client area size
+            client_pos = win32gui.ClientToScreen(self.hwnd, (0, 0))  # Get client area position in screen coordinates
+            window_pos = win32gui.GetWindowRect(self.hwnd)  # Get window position in screen coordinates
             
-            try:
-                win_w = self.last_window_rect[2] - self.last_window_rect[0]
-                win_h = self.last_window_rect[3] - self.last_window_rect[1]
-                
-                bmp = win32ui.CreateBitmap()
-                bmp.CreateCompatibleBitmap(srcDC, win_w, win_h)
-                memDC.SelectObject(bmp)
+            # Calculate border offsets
+            border_left = client_pos[0] - window_pos[0]
+            border_top = client_pos[1] - window_pos[1]
 
-                result = ctypes.windll.user32.PrintWindow(self.hwnd, memDC.GetSafeHdc(), 0x2)
-
-                if result == 1:
-                    # Get bitmap data with minimal copying
-                    bmp_str = bmp.GetBitmapBits(True)
-                    img = np.frombuffer(bmp_str, dtype=np.uint8).reshape((win_h, win_w, 4))
+            # Try MSS first if available and not explicitly using GDI
+            if MSS_AVAILABLE and method in ('auto', 'mss'):
+                try:
+                    # Get the window bounds
+                    left, top, right, bottom = window_pos
+                    
+                    # Capture the region
+                    monitor = {"top": top, "left": left, "width": right - left, "height": bottom - top}
+                    screenshot = self.mss_instance.grab(monitor)
+                    
+                    # Convert to BGR format with minimal copying
+                    img = np.asarray(screenshot)  # Zero-copy operation
                     
                     # Crop to client area
-                    if border_top + h <= img.shape[0] and border_left + w <= img.shape[1]:
-                        img = img[border_top:border_top + h, border_left:border_left + w]
+                    if border_top + self.h <= img.shape[0] and border_left + self.w <= img.shape[1]:
+                        # Use view instead of copy when possible
+                        img = img[border_top:border_top + self.h, border_left:border_left + self.w]
                         return self._convert_to_bgr_gpu(img)
-                    else:
-                        img = np.zeros((h, w, 3), dtype=np.uint8)
-                else:
-                    img = np.zeros((h, w, 3), dtype=np.uint8)
                     
-            finally:
-                memDC.DeleteDC()
-                srcDC.DeleteDC()
-                win32gui.ReleaseDC(self.hwnd, hwndDC)
-                win32gui.DeleteObject(bmp.GetHandle())
+                except Exception as e:
+                    if method == 'mss':
+                        log("[ERROR]", f"MSS screenshot failed: {str(e)}")
+                        return np.zeros((self.h, self.w, 3), dtype=np.uint8)
+
+            # GDI method (fallback)
+            try:
+                hwndDC = win32gui.GetWindowDC(self.hwnd)
+                srcDC = win32ui.CreateDCFromHandle(hwndDC)
+                memDC = srcDC.CreateCompatibleDC()
+                
+                try:
+                    win_w = window_pos[2] - window_pos[0]
+                    win_h = window_pos[3] - window_pos[1]
+                    
+                    bmp = win32ui.CreateBitmap()
+                    bmp.CreateCompatibleBitmap(srcDC, win_w, win_h)
+                    memDC.SelectObject(bmp)
+
+                    result = ctypes.windll.user32.PrintWindow(self.hwnd, memDC.GetSafeHdc(), 0x2)
+
+                    if result == 1:
+                        # Get bitmap data with minimal copying
+                        bmp_str = bmp.GetBitmapBits(True)
+                        img = np.frombuffer(bmp_str, dtype=np.uint8).reshape((win_h, win_w, 4))
+                        
+                        # Crop to client area
+                        if border_top + self.h <= img.shape[0] and border_left + self.w <= img.shape[1]:
+                            img = img[border_top:border_top + self.h, border_left:border_left + self.w]
+                            return self._convert_to_bgr_gpu(img)
+                        else:
+                            img = np.zeros((self.h, self.w, 3), dtype=np.uint8)
+                    else:
+                        img = np.zeros((self.h, self.w, 3), dtype=np.uint8)
+                        
+                finally:
+                    memDC.DeleteDC()
+                    srcDC.DeleteDC()
+                    win32gui.ReleaseDC(self.hwnd, hwndDC)
+                    win32gui.DeleteObject(bmp.GetHandle())
+
+            except Exception as e:
+                log("[ERROR]", f"Screenshot capture failed: {str(e)}")
+                img = np.zeros((self.h, self.w, 3), dtype=np.uint8)
+
+            if debug:
+                cv2.imshow("Captured Window", img)
+                cv2.waitKey(1)
+
+            return img
 
         except Exception as e:
             log("[ERROR]", f"Screenshot capture failed: {str(e)}")
-            img = np.zeros((h, w, 3), dtype=np.uint8)
-
-        if debug:
-            cv2.imshow("Captured Window", img)
-            cv2.waitKey(1)
-
-        return img
+            return np.zeros((self.h or 1, self.w or 1, 3), dtype=np.uint8)
 
     def __del__(self):
         """Cleanup GPU resources"""

@@ -35,56 +35,62 @@ class Vision:
         - debug_mode: 'rectangles', 'points', 'save', 'debug' to visualize results
         """
         # Check for valid haystack image
-        if haystack_img is None:
+        if haystack_img is None or haystack_img.size == 0:
+            log("[WARNING]", "Empty or invalid haystack image (window may be minimized)")
             return []  # Return empty list instead of None for consistency
             
         # Optional conversion or enforce both haystack and needle as grayscale
-        if convert_mode:
-            haystack = cv2.cvtColor(haystack_img, convert_mode)
-            needle = cv2.cvtColor(self.needle_img, convert_mode)
-        else:
-            # Force both to grayscale to avoid dimension mismatch
-            haystack = cv2.cvtColor(haystack_img, cv2.COLOR_BGR2GRAY) if len(haystack_img.shape) == 3 else haystack_img
-            needle = cv2.cvtColor(self.needle_img, cv2.COLOR_BGR2GRAY) if len(self.needle_img.shape) == 3 else self.needle_img
+        try:
+            if convert_mode:
+                haystack = cv2.cvtColor(haystack_img, convert_mode)
+                needle = cv2.cvtColor(self.needle_img, convert_mode)
+            else:
+                # Force both to grayscale to avoid dimension mismatch
+                haystack = cv2.cvtColor(haystack_img, cv2.COLOR_BGR2GRAY) if len(haystack_img.shape) == 3 else haystack_img
+                needle = cv2.cvtColor(self.needle_img, cv2.COLOR_BGR2GRAY) if len(self.needle_img.shape) == 3 else self.needle_img
 
-        # Force both to uint8 type
-        haystack = haystack.astype(np.uint8)
-        needle = needle.astype(np.uint8)
+            # Force both to uint8 type
+            haystack = haystack.astype(np.uint8)
+            needle = needle.astype(np.uint8)
 
-        # Safety check for template size
-        if haystack.shape[0] < needle.shape[0] or haystack.shape[1] < needle.shape[1]:
-            log("[ERROR]", "Needle image is larger than haystack.")
-            return []
+            # Safety check for template size
+            if haystack.shape[0] < needle.shape[0] or haystack.shape[1] < needle.shape[1]:
+                log("[WARNING]", "Needle image is larger than haystack (window may be minimized)")
+                return []
 
-        # Now safe to match
-        result = cv2.matchTemplate(haystack, needle, self.method)
-        locations = np.where(result >= threshold)
-        locations = list(zip(*locations[::-1]))
+            # Now safe to match
+            result = cv2.matchTemplate(haystack, needle, self.method)
+            locations = np.where(result >= threshold)
+            locations = list(zip(*locations[::-1]))
 
-        rectangles = []
-        for loc in locations:
-            rect = [int(loc[0]), int(loc[1]), self.needle_w, self.needle_h]
-            rectangles.append(rect)
-            rectangles.append(rect)
+            rectangles = []
+            for loc in locations:
+                rect = [int(loc[0]), int(loc[1]), self.needle_w, self.needle_h]
+                rectangles.append(rect)
+                rectangles.append(rect)
 
-        rectangles, _ = cv2.groupRectangles(rectangles, groupThreshold=1, eps=0.5)
+            rectangles, _ = cv2.groupRectangles(rectangles, groupThreshold=1, eps=0.5)
 
-        points = []
-        for (x, y, w, h) in rectangles:
-            center_x = x + int(w / 2)
-            center_y = y + int(h / 2)
-            points.append((center_x, center_y))
+            points = []
+            for (x, y, w, h) in rectangles:
+                center_x = x + int(w / 2)
+                center_y = y + int(h / 2)
+                points.append((center_x, center_y))
+
+                if debug:
+                    color = (0, 255, 0)
+                    cv2.rectangle(haystack_img, (x, y), (x + w, y + h), color, 2)
 
             if debug:
-                color = (0, 255, 0)
-                cv2.rectangle(haystack_img, (x, y), (x + w, y + h), color, 2)
+                cv2.imshow('Matches', haystack_img)
+                cv2.waitKey(1)
 
-        if debug:
-            cv2.imshow('Matches', haystack_img)
-            cv2.waitKey(1)
-
-        # Optional scaling
-        #points = [(int(x / 1.2234), int(y / 1.2234)) for x, y in points]
-        points = [(int(x), int(y)) for x, y in points]
-        self.points = points
-        return points
+            # Optional scaling
+            #points = [(int(x / 1.2234), int(y / 1.2234)) for x, y in points]
+            points = [(int(x), int(y)) for x, y in points]
+            self.points = points
+            return points
+            
+        except Exception as e:
+            log("[ERROR]", f"Template matching failed: {str(e)}")
+            return []

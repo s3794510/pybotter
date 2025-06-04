@@ -65,21 +65,10 @@ class BotHandler:
         # MAIN FIELDS
         self.window_name = window_name
         self.soundpath = os.path.join(os.path.dirname(__file__),'sound')
-        self.hwnd = None
-        self.is_running = True  # Keep running while waiting for window
-        self.is_window_ready = False  # New flag to track window state
-        
-        # Try to find the window first
-        self.get_window_handle()
-        if not self.hwnd or not win32gui.IsWindow(self.hwnd):
-            log("[WARNING]", f"Window '{window_name}' not found initially. Will keep trying...")
-        else:
-            self.is_window_ready = True
-            
-        # Continue with initialization
         self.s = sched.scheduler(time, sleep)
         self.window_handler = WindowHandler(self.window_name)
         self.soundhandler = SoundHandler(self.soundpath)
+        self.is_running = True
         self.is_pause = False
         self.on_screenshot = on_screenshot
         
@@ -101,13 +90,13 @@ class BotHandler:
         # Rate control parameters
         self.rate_error_sum = 0
         self.last_rate_error = 0
-        self.kp = 0.02  # Reduced from 0.1
-        self.ki = 0.001  # Reduced from 0.01
-        self.kd = 0.005  # Reduced from 0.05
+        self.kp = 0.02
+        self.ki = 0.001
+        self.kd = 0.005
         self._current_interval = interval
         self._interval_lock = threading.Lock()
         self._rate_samples = []
-        self._max_samples = 10  # Number of samples for moving average
+        self._max_samples = 10
         
         # SPECIAL MODE INTERCEPTION
         if mode and "in" in mode:
@@ -122,90 +111,28 @@ class BotHandler:
         self.show_fps_handle_thread()
 
         self.soundhandler.sound_start()
+        
+        log("[INFO]", f"BotHandler initialized for window '{window_name}'")
 
-    def get_window_handle(self):
-        if self.window_name is None:
-            self.hwnd = win32gui.GetDesktopWindow()
-        else:
-            self.hwnd = win32gui.FindWindow(None, self.window_name)
-            # if not self.hwnd:
-            #     raise Exception('Window not found: {}'.format(self.window_name))
+    @property
+    def is_window_ready(self):
+        """Check if window is ready for interaction."""
+        return self.window_handler.is_valid and not self.window_handler.is_minimized
 
-    @staticmethod
-    def check_file_exist(path):
-        if not os.path.isfile(path):
-            raise Exception("Path or file not found")
-        return True
-
-    def check_needle_fit_haystack(self, needle_name):
-        needle = self.needle_handlers.get(needle_name)
-        if (needle.needle_h > self.window_handler.h) or (needle.needle_w > self.window_handler.w) :
-            log("[WARNING]",  f"Needle image is bigger than the target window. needle_w = {needle.needle_w} | window_w = {self.window_handler.w} | needle_h = {needle.needle_h} | window_h = {self.window_handler.h}")
-        return True
-
-    def add_image(self, name, path):
-        if self.needle_handlers.get(name) != None:
-            raise Exception("Needle image name already existed")
-        if self.check_file_exist(path):
-            self.needle_handlers.update({name:Vision(path, name = name)})
-            if self.needle_handlers.get(name) == None:
-                raise Exception("Needle image returns a NULL value")
-            return self.needle_handlers.get(name)
-
-        raise Exception("Unexpected Error")
-
-    def find_image(self, name, threshold, convert = None):
-        "convert method = COLOR_BGR2GRAY"
-        needle = self.needle_handlers.get(name)
-        # typeneedle = type(needle)
-        # if typeneedle is not Vision:
-        #     raise(Exception("Needle image not found, actual Type:",typeneedle))
-        # if self.check_needle_fit_haystack(name): 
-        return needle.find(self.haystack, threshold, convert_mode= convert,debug=self.debug)
-        raise Exception("UNEXPECTED ERROR")
-
-    def keyboard_press(self, key, duration):
-        keycode = self.keymap.get(key.upper())
-        win32api.PostMessage(self.hwnd, win32con.WM_KEYDOWN, keycode, 0)
-        sleep(duration + 0.1)
-        win32api.PostMessage(self.hwnd, win32con.WM_KEYUP, keycode, 0)
-        return 0
+    @property
+    def hwnd(self):
+        """Get current window handle."""
+        return self.window_handler.hwnd if self.window_handler.is_valid else 0
 
     def leftclick(self, x=None, y=None, duration=0.1):
         """Perform a left click with window handle validation."""
-        # Don't try to click if window isn't ready
         if not self.is_window_ready:
-            log("[WARNING]", "Cannot click - waiting for window to be ready")
+            log("[WARNING]", "Cannot click - window not ready")
             return False
-            
-        if not win32gui.IsWindow(self.hwnd) or self.hwnd == 0:
-            log("[WARNING]", "Window handle invalid, attempting to recover...")
-            self.get_window_handle()
-            if not win32gui.IsWindow(self.hwnd):
-                log("[ERROR]", f"Failed to recover window handle for '{self.window_name}'")
-                self.is_window_ready = False
-                return False
 
         # If x and y are not provided, click at current cursor position
         if x is None or y is None:
-            # Try the click operation
-            success = SendInputMouse.click_at_current_to_window(self.hwnd, duration)
-            if not success:
-                # If click failed, try to recover window handle and retry once
-                self.get_window_handle()
-                if win32gui.IsWindow(self.hwnd):
-                    return SendInputMouse.click_at_current_to_window(self.hwnd, duration)
-            return success
-        ## NOT DEFINED YET
-        # If x and y are provided, click at the specified position
-        else:
-            #success = SendInputMouse.click_at_to_window(self.hwnd, x, y, duration)
-            if not success:
-                # If click failed, try to recover window handle and retry once
-                self.get_window_handle()
-                if win32gui.IsWindow(self.hwnd):
-                    return SendInputMouse.click_at_current_to_window(self.hwnd, duration)
-            return success
+            return SendInputMouse.click_at_current_to_window(self.hwnd, duration)
 
     def flow_handle(self, sleep_time = 0):
         sleep(sleep_time)
@@ -408,23 +335,21 @@ class BotHandler:
                 current_time = time()
                 
                 # If window is not ready, try to find it
-                if not self.is_window_ready:
+                if not self.window_handler.is_valid or self.window_handler.is_minimized:
                     if current_time - last_retry >= retry_interval:
-                        self.get_window_handle()
-                        if self.hwnd and win32gui.IsWindow(self.hwnd):
-                            log("[INFO]", f"Found window '{self.window_name}'")
-                            self.is_window_ready = True
-                        else:
-                            log("[INFO]", f"Still waiting for window '{self.window_name}'...")
+                        # Force a window state update
+                        self.window_handler._update_window_state()
                         last_retry = current_time
+                        
+                        # Progressive backoff for retry interval, max 5 seconds
+                        retry_interval = min(5.0, retry_interval * 1.2)
                     sleep(0.1)  # Short sleep while waiting
                     continue
                 
-                # Check if window is still valid
-                if not win32gui.IsWindow(self.hwnd):
-                    log("[WARNING]", f"Lost connection to window '{self.window_name}'. Will try to reconnect...")
-                    self.is_window_ready = False
-                    continue
+                # Reset retry interval when window is found
+                if retry_interval > 1.0:
+                    log("[INFO]", f"Successfully reconnected to window '{self.window_name}'")
+                    retry_interval = 1.0
                 
                 # Normal screenshot update when window is ready
                 if self.pause_switch:
@@ -553,3 +478,78 @@ class BotHandler:
 #             raise self.exc
 #         return self.ret
 
+    @staticmethod
+    def check_file_exist(path):
+        """Check if a file exists at the given path."""
+        if not os.path.isfile(path):
+            raise Exception("Path or file not found")
+        return True
+
+    def check_needle_fit_haystack(self, needle_name):
+        """Check if the needle image fits within the target window dimensions."""
+        needle = self.needle_handlers.get(needle_name)
+        if (needle.needle_h > self.window_handler.h) or (needle.needle_w > self.window_handler.w):
+            log("[WARNING]", f"Needle image is bigger than the target window. needle_w = {needle.needle_w} | window_w = {self.window_handler.w} | needle_h = {needle.needle_h} | window_h = {self.window_handler.h}")
+        return True
+
+    def add_image(self, name, path):
+        """
+        Add a needle image for template matching.
+        
+        Args:
+            name: Unique identifier for the image
+            path: Path to the image file
+            
+        Returns:
+            Vision object for the added image
+        """
+        if self.needle_handlers.get(name) is not None:
+            raise Exception("Needle image name already exists")
+            
+        if self.check_file_exist(path):
+            self.needle_handlers.update({name: Vision(path, name=name)})
+            if self.needle_handlers.get(name) is None:
+                raise Exception("Needle image returns a NULL value")
+            return self.needle_handlers.get(name)
+
+        raise Exception("Unexpected Error")
+
+    def find_image(self, name, threshold, convert=None):
+        """
+        Find a previously added needle image in the current screenshot.
+        
+        Args:
+            name: Name of the needle image to find
+            threshold: Confidence threshold (0-1)
+            convert: Optional color conversion method (e.g. COLOR_BGR2GRAY)
+            
+        Returns:
+            List of matching positions or None
+        """
+        needle = self.needle_handlers.get(name)
+        if needle is None:
+            raise Exception(f"Needle image '{name}' not found")
+            
+        return needle.find(self.haystack, threshold, convert_mode=convert, debug=self.debug)
+
+    def keyboard_press(self, key, duration):
+        """
+        Send a keyboard press to the window.
+        
+        Args:
+            key: Key to press (must be in keymap)
+            duration: How long to hold the key
+        """
+        if not self.is_window_ready:
+            log("[WARNING]", "Cannot send keyboard input - window not ready")
+            return False
+            
+        keycode = self.keymap.get(key.upper())
+        if keycode is None:
+            log("[ERROR]", f"Key '{key}' not found in keymap")
+            return False
+            
+        win32api.PostMessage(self.hwnd, win32con.WM_KEYDOWN, keycode, 0)
+        sleep(duration + 0.1)
+        win32api.PostMessage(self.hwnd, win32con.WM_KEYUP, keycode, 0)
+        return True
