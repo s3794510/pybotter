@@ -42,26 +42,31 @@ class PyBot:
         log("INFO", f"TARGET RATE: {self.rate_limit if self.rate_limit else 1/self.interval:.1f}Hz, SLEEP TIME: {self.sleep_time}s")
     def _run_synced_functions(self):
         """Run all screenshot-synced functions if they're not already running"""
-        for func in self.screenshot_synced_functions:
-            with self._sync_lock:
-                # Skip if function is still running
-                if self._sync_functions_running.get(func, False):
-                    continue
-                self._sync_functions_running[func] = True
+        # Reset all running states at the start of each screenshot cycle
+        with self._sync_lock:
+            self._sync_functions_running = {}
 
+        for func in self.screenshot_synced_functions:
             def wrapped_func():
                 try:
+                    # Run the function
                     func()
-                finally:
-                    with self._sync_lock:
-                        self._sync_functions_running[func] = False
+                except Exception as e:
+                    log("ERROR", f"Error in synced function {func.__name__}: {str(e)}")
 
+            # Create and start a new thread for this function
             thread = threading.Thread(
                 target=wrapped_func,
                 daemon=True,
                 name=f"ScreenSync_{func.__name__}"
             )
             thread.start()
+
+        # Optional: Wait for all threads to complete if you want synchronous execution
+        # Remove this if you want async execution
+        for thread in threading.enumerate():
+            if thread.name.startswith("ScreenSync_"):
+                thread.join(timeout=1.0)  # Wait up to 1 second for each thread
 
     def _before_mainloop(self):
         """Initialize the bot before starting the main loop."""
