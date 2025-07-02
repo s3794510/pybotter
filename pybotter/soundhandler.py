@@ -64,6 +64,9 @@ class SoundHandler:
     def sound_exit(self):
         self.play(self.soundfolderpath +'/exit.mp3')
 
+    def sound_warning(self):
+        self.play(self.soundfolderpath +'/warning.mp3')
+
     def play(self, sound_folder):
             thread = threading.Thread(target=self._playsoundWin, args=(sound_folder,))
             thread.start()

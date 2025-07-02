@@ -185,6 +185,10 @@ class BotHandler:
         ]
         last_trigger_time = 0
         debounce_interval = 1  # seconds
+        pause_start_time = None
+        last_warning_time = 0
+        warning_interval = 30  # seconds
+        warning_delay = 60     # seconds before first warning
 
         while self.is_running:
             if any(combo() for combo in key_combos):
@@ -192,9 +196,27 @@ class BotHandler:
                 if now - last_trigger_time >= debounce_interval:
                     if self.is_pause:
                         self.unpause()
+                        pause_start_time = None  # Reset pause timer
                     else:
                         self.pause()
+                        pause_start_time = time()  # Start pause timer
+                        last_warning_time = 0
                     last_trigger_time = now
+
+            # If paused, check for warning sound
+            if self.is_pause:
+                now = time()
+                if pause_start_time is None:
+                    pause_start_time = now
+                    last_warning_time = 0
+                paused_duration = now - pause_start_time
+                if paused_duration >= warning_delay:
+                    if last_warning_time == 0 or (now - last_warning_time) >= warning_interval:
+                        self.soundhandler.sound_warning()
+                        last_warning_time = now
+            else:
+                pause_start_time = None
+                last_warning_time = 0
 
             sleep(self.keywait)
                     
