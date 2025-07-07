@@ -323,8 +323,8 @@ class PyBot:
 ###############################################
 # UTILITIES
 ###############################################
-    def resize(self, x, y):
-        return self.bothandler.resize(x, y)
+    def resize(self, x, y, mode='window'):
+        return self.bothandler.resize(x, y, mode)
     
     def play_alarm(self, mode=0):
         """

@@ -182,14 +182,16 @@ class WindowHandler:
                 log("[INFO]", f"Window '{self.window_name}' {'minimized' if self.is_minimized else 'restored'}")
 
             # Update window size
-            rect = win32gui.GetClientRect(self.hwnd)
-            new_w = rect[2] - rect[0]
-            new_h = rect[3] - rect[1]
-            
+            client_rect = win32gui.GetClientRect(self.hwnd)
+            window_rect = win32gui.GetWindowRect(self.hwnd)
+            new_w = client_rect[2] - client_rect[0]
+            new_h = client_rect[3] - client_rect[1]
+            win_w = window_rect[2] - window_rect[0]
+            win_h = window_rect[3] - window_rect[1]
             if new_w != self.w or new_h != self.h:
                 self.w, self.h = new_w, new_h
                 if self.w > 0 and self.h > 0:
-                    log("[INFO]", f"Window size updated: {self.w}x{self.h}")
+                    log("[INFO]", f"Window size updated: client area {self.w}x{self.h}, total window size {win_w}x{win_h}")
 
             # Update valid state
             was_valid = self.is_valid
@@ -344,9 +346,36 @@ class WindowHandler:
     #             raise Exception('Window not found: {}'.format(window_name))
     #     return hwnd
     
-    def window_resize(self, w, h) -> None:
-        win32gui.MoveWindow(self.hwnd, 0, 0, w, h, True)
-        self.w = w
-        self.h = h
+    def window_resize(self, w, h, mode='window') -> None:
+        """
+        Resize the window.
+        Args:
+            w: target width
+            h: target height
+            mode: 'client' to set client area size, 'window' to set total window size (default)
+        """
+        try:
+            window_rect = win32gui.GetWindowRect(self.hwnd)
+            if mode == 'client':
+                client_rect = win32gui.GetClientRect(self.hwnd)
+                border_w = (window_rect[2] - window_rect[0]) - (client_rect[2] - client_rect[0])
+                border_h = (window_rect[3] - window_rect[1]) - (client_rect[3] - client_rect[1])
+                new_win_w = w + border_w
+                new_win_h = h + border_h
+                win32gui.MoveWindow(self.hwnd, window_rect[0], window_rect[1], new_win_w, new_win_h, True)
+                self.w = w
+                self.h = h
+                log("[INFO]", f"Resized window '{self.window_name}' to client area {w}x{h} (Total window size {new_win_w}x{new_win_h}) [mode=client]")
+            elif mode == 'window':
+                win32gui.MoveWindow(self.hwnd, window_rect[0], window_rect[1], w, h, True)
+                # Update self.w, self.h to reflect new client area after resize
+                client_rect = win32gui.GetClientRect(self.hwnd)
+                self.w = client_rect[2] - client_rect[0]
+                self.h = client_rect[3] - client_rect[1]
+                log("[INFO]", f"Resized window '{self.window_name}' to total window size {w}x{h} (Client area {self.w}x{self.h}) [mode=window]")
+            else:
+                log("[WARNING]", f"Unknown resize mode '{mode}', no action taken.")
+        except Exception as e:
+            log("[ERROR]", f"Failed to resize window: {e}")
         return 0
     

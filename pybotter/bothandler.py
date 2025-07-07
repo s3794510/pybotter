@@ -151,8 +151,8 @@ class BotHandler:
 
 
 
-    def resize(self, x, y):
-        return self.window_handler.window_resize(x, y)
+    def resize(self, x, y, mode='window'):
+        return self.window_handler.window_resize(x, y, mode)
 
     def destroyAllWindows(self):
         cv2.destroyAllWindows()
