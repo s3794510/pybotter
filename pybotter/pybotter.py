@@ -40,6 +40,7 @@ class PyBot:
         log("INFO", f"Object PyBot created, Window name: {self.window_name}")
         log("INFO", f"RUNNING MODE: '{self.mode}', DEBUG MODE: {self.debug}")
         log("INFO", f"TARGET RATE: {self.rate_limit if self.rate_limit else 1/self.interval:.1f}Hz, SLEEP TIME: {self.sleep_time}s")
+
     def _run_synced_functions(self):
         """Run all screenshot-synced functions if they're not already running"""
         # Reset all running states at the start of each screenshot cycle
@@ -113,13 +114,21 @@ class PyBot:
 
     def run(self, function_configs):
         """
-        Run multiple functions in separate threads.
-        
+        Run multiple functions in separate threads or handle config dict.
         Args:
-            function_configs: list of tuples in one of these formats:
-                - (function, thread_count): Run function in thread_count threads with sleep_time delay
-                - (function, thread_count, "screenshot_sync"): Run function in sync with screenshot updates
+            function_configs: list of tuples (old style) or config dict (new style)
         """
+        # If config is a dict, handle keep_window_size and extract functions
+        if isinstance(function_configs, dict):
+            kws = function_configs.get('keep_window_size', {})
+            if kws.get('enabled') and kws.get('window_size'):
+                self.bothandler.set_window_size_enforcement(
+                    enabled=True,
+                    window_size=kws['window_size'],
+                    mode=kws.get('window_size_mode', 'window')
+                )
+            function_configs = function_configs.get('functions', [])
+
         try:
             self.function_configs = function_configs
             self._before_mainloop()

@@ -72,6 +72,12 @@ class BotHandler:
         self.is_pause = False
         self.on_screenshot = on_screenshot
         
+        # Window size enforcement
+        self.keep_window_size = False
+        self.window_size = None
+        self.window_size_mode = 'window'
+        self._window_size_thread_started = False
+        
         # Performance monitoring
         self.perf_tracker = PerformanceTracker()
         self.bot_monitor = self.perf_tracker.get_monitor("Bot Logic")
@@ -114,25 +120,6 @@ class BotHandler:
         
         log("[INFO]", f"BotHandler initialized for window '{window_name}'")
 
-    @property
-    def is_window_ready(self):
-        """Check if window is ready for interaction."""
-        return self.window_handler.is_valid and not self.window_handler.is_minimized
-
-    @property
-    def hwnd(self):
-        """Get current window handle."""
-        return self.window_handler.hwnd if self.window_handler.is_valid else 0
-
-    def leftclick(self, x=None, y=None, duration=0.1):
-        """Perform a left click with window handle validation."""
-        if not self.is_window_ready:
-            log("[WARNING]", "Cannot click - window not ready")
-            return False
-
-        # If x and y are not provided, click at current cursor position
-        if x is None or y is None:
-            return SendInputMouse.click_at_current_to_window(self.hwnd, duration)
 
     def flow_handle(self, sleep_time = 0):
         sleep(sleep_time)
@@ -150,15 +137,9 @@ class BotHandler:
         self.bot_monitor.update()
 
 
-
-    def resize(self, x, y, mode='window'):
-        return self.window_handler.window_resize(x, y, mode)
-
-    def destroyAllWindows(self):
-        cv2.destroyAllWindows()
-        return 0
-
-##############################
+    #####################################
+    # PAUSE HANDLER
+    #####################################
     def pause(self):
         self.is_pause = True
         if self.pause_switch:
@@ -220,7 +201,9 @@ class BotHandler:
 
             sleep(self.keywait)
                     
-##############################
+    ##############################
+    # EXIT HANDLER
+    ##############################
     def exit_handle_thread(self, key_combinations):
         """
         Starts a thread to watch for any of the key combinations.
@@ -249,7 +232,9 @@ class BotHandler:
         self.soundhandler.sound_exit()
         pass
 
-#####################################
+    #####################################
+    # FPS HANDLER
+    #####################################
     def show_fps_handle_thread(self):
         thread = threading.Thread(target=self.show_fps_handle, args=(), daemon=True) 
         thread.start()
@@ -274,15 +259,9 @@ class BotHandler:
             
             sleep(self.keywait)
 
-#####################################
-    def update_screenshot(self, debug = ''):
-        self.haystack = self.window_handler.get_screenshot(debug)
-        # Update screen capture FPS
-        self.capture_monitor.update()
-        # Call screenshot callback if exists
-        if self.on_screenshot:
-            self.on_screenshot()
-
+    #####################################
+    # RATE CONTROL
+    #####################################
     def _get_current_interval(self):
         with self._interval_lock:
             return self._current_interval
@@ -340,6 +319,17 @@ class BotHandler:
                 self.adjust_interval()
             sleep(0.2)  # Reduced update frequency to every 200ms
 
+    #####################################
+    # SCREENSHOT HANDLER
+    #####################################
+    def update_screenshot(self, debug = ''):
+        self.haystack = self.window_handler.get_screenshot(debug)
+        # Update screen capture FPS
+        self.capture_monitor.update()
+        # Call screenshot callback if exists
+        if self.on_screenshot:
+            self.on_screenshot()
+    
     def start_screenshot_updater(self, interval=1.0):
         """Start a background thread to update the screenshot at regular intervals."""
         log(message="Starting screenshot updater thread")
@@ -412,101 +402,6 @@ class BotHandler:
         except Exception as e:
             log("[ERROR]", f"Failed to save screenshot: {e}")
 
-
-#####################################
-    def move_mouse_sendinput(self, target_x, target_y, duration=0):
-        screen_w = ctypes.windll.user32.GetSystemMetrics(0)
-        screen_h = ctypes.windll.user32.GetSystemMetrics(1)
-
-        def normalize(x, y):
-            return int(x * 65535 / screen_w), int(y * 65535 / screen_h)
-
-        # Convert client (window) coords to screen coords
-        point = ctypes.wintypes.POINT(target_x, target_y)
-        ctypes.windll.user32.ClientToScreen(self.hwnd, ctypes.byref(point))
-        target_x, target_y = point.x, point.y
-
-        # Get current cursor position
-        pt = ctypes.wintypes.POINT()
-        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-        start_x, start_y = pt.x, pt.y
-
-        steps = int(duration * 60) if duration > 0 else 1
-
-        for i in range(steps + 1):
-            t = i / steps if steps > 0 else 1
-            x = int(start_x + (target_x - start_x) * t)
-            y = int(start_y + (target_y - start_y) * t)
-            nx, ny = normalize(x, y)
-
-            mi = MOUSEINPUT(
-                dx=nx,
-                dy=ny,
-                mouseData=0,
-                dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
-                time=0,
-                dwExtraInfo=None
-            )
-            inp = INPUT(type=INPUT_MOUSE, mi=mi)
-            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
-
-            if duration > 0:
-                sleep(duration / steps)
-
-    def interception_click(self, x=None, y=None, duration=0):
-        """
-        If x and y are given: move by (x,y) relative to current cursor.
-        Then perform a left-click, holding for `duration` seconds.
-        """
-        # optional relative move
-        self.im.click_at(self.hwnd, x=x,y=y,duration = 0.1)
-
-    # def keep_awake(self):
-    #     ES_CONTINUOUS = 0x80000000
-    #     ES_SYSTEM_REQUIRED = 0x00000001
-    #     ES_DISPLAY_REQUIRED = 0x00000002
-    #     ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
-
-    #     while True:
-    #         sleep(30)  # Still needs a loop to hold the execution state
-
-    # def start_keep_awake_thread(self):
-    #     t = threading.Thread(target=self.keep_awake, daemon=True)
-    #     t.start()
-
-    #############################
-    #############################  
-    
-
-############################
-
-############################
-# @creation_log
-# class PropagatingThread(threading.Thread):
-#     def run(self):
-#         self.exc = None
-#         try:
-#             if hasattr(self, '_Thread__target'):
-#                 # Thread uses name mangling prior to Python 3.
-#                 self.ret = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
-#             else:
-#                 self.ret = self._target(*self._args, **self._kwargs)
-#         except BaseException as e:
-#             self.exc = e
-
-#     def join(self, timeout=None):
-#         super(PropagatingThread, self).join(timeout)
-#         if self.exc:
-#             raise self.exc
-#         return self.ret
-
-    @staticmethod
-    def check_file_exist(path):
-        """Check if a file exists at the given path."""
-        if not os.path.isfile(path):
-            raise Exception("Path or file not found")
-        return True
-
     def check_needle_fit_haystack(self, needle_name):
         """Check if the needle image fits within the target window dimensions."""
         needle = self.needle_handlers.get(needle_name)
@@ -554,6 +449,105 @@ class BotHandler:
             
         return needle.find(self.haystack, threshold, convert_mode=convert, debug=self.debug)
 
+    #####################################
+    # WINDOW SIZE ENFORCEMENT
+    #####################################
+    def set_window_size_enforcement(self, enabled, window_size, mode='window'):
+        """Set window size enforcement parameters and start thread if needed"""
+        self.keep_window_size = enabled
+        self.window_size = window_size
+        self.window_size_mode = mode
+        
+        if enabled and window_size and not self._window_size_thread_started:
+            threading.Thread(target=self._enforce_window_size_thread, daemon=True).start()
+            self._window_size_thread_started = True
+            log("[INFO]", f"Window size enforcement started: {window_size[0]}x{window_size[1]} ({mode})")
+
+    def _enforce_window_size_thread(self):
+        """Enforce window size in background thread"""
+        while self.is_running:
+            try:
+                if self.is_window_ready:
+                    current_mode = self.window_size_mode
+                    w, h = self.window_size
+                    # Get current size
+                    if current_mode == 'window':
+                        rect = self.window_handler.get_windowsize(self.window_handler)
+                        win_w = rect[2] - rect[0]
+                        win_h = rect[3] - rect[1]
+                        if (win_w, win_h) != (w, h):
+                            # Use window_handler to resize and move to (0,0) in one operation
+                            self.window_handler.window_resize_and_move(w, h, 0, 0, mode=current_mode)
+                    elif current_mode == 'client':
+                        client_rect = win32gui.GetClientRect(self.hwnd)
+                        client_w = client_rect[2] - client_rect[0]
+                        client_h = client_rect[3] - client_rect[1]
+                        if (client_w, client_h) != (w, h):
+                            # Use window_handler to resize and move to (0,0) in one operation
+                            self.window_handler.window_resize_and_move(w, h, 0, 0, mode=current_mode)
+                sleep(1)
+            except Exception as e:
+                log("[ERROR]", f"Window size enforcement error: {e}")
+                sleep(2)
+
+    #####################################
+    # MOUSE AND KEYBOARD HANDLER
+    #####################################
+    def leftclick(self, x=None, y=None, duration=0.1):
+        """Perform a left click with window handle validation."""
+        # If x and y are not provided, click at current cursor position
+        if x is None or y is None:
+            return SendInputMouse.click_at_current_to_window(self.hwnd, duration)
+        else:
+            pass
+
+    def move_mouse_sendinput(self, target_x, target_y, duration=0):
+        screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+        screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+
+        def normalize(x, y):
+            return int(x * 65535 / screen_w), int(y * 65535 / screen_h)
+
+        # Convert client (window) coords to screen coords
+        point = ctypes.wintypes.POINT(target_x, target_y)
+        ctypes.windll.user32.ClientToScreen(self.hwnd, ctypes.byref(point))
+        target_x, target_y = point.x, point.y
+
+        # Get current cursor position
+        pt = ctypes.wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+        start_x, start_y = pt.x, pt.y
+
+        steps = int(duration * 60) if duration > 0 else 1
+
+        for i in range(steps + 1):
+            t = i / steps if steps > 0 else 1
+            x = int(start_x + (target_x - start_x) * t)
+            y = int(start_y + (target_y - start_y) * t)
+            nx, ny = normalize(x, y)
+
+            mi = MOUSEINPUT(
+                dx=nx,
+                dy=ny,
+                mouseData=0,
+                dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                time=0,
+                dwExtraInfo=None
+            )
+            inp = INPUT(type=INPUT_MOUSE, mi=mi)
+            ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+
+            if duration > 0:
+                sleep(duration / steps)
+
+    def interception_click(self, x=None, y=None, duration=0):
+        """
+        If x and y are given: move by (x,y) relative to current cursor.
+        Then perform a left-click, holding for `duration` seconds.
+        """
+        # optional relative move
+        self.im.click_at(self.hwnd, x=x,y=y,duration = 0.1)
+
     def keyboard_press(self, key, duration):
         """
         Send a keyboard press to the window.
@@ -575,3 +569,30 @@ class BotHandler:
         sleep(duration + 0.1)
         win32api.PostMessage(self.hwnd, win32con.WM_KEYUP, keycode, 0)
         return True
+
+    #####################################
+    # UTILITY FUNCTIONS
+    #####################################
+    @staticmethod
+    def check_file_exist(path):
+        """Check if a file exists at the given path."""
+        if not os.path.isfile(path):
+            raise Exception("Path or file not found")
+        return True
+    
+    @property
+    def is_window_ready(self):
+        """Check if window is ready for interaction."""
+        return self.window_handler.is_valid and not self.window_handler.is_minimized
+
+    @property
+    def hwnd(self):
+        """Get current window handle."""
+        return self.window_handler.hwnd if self.window_handler.is_valid else 0
+
+    def resize(self, x, y, mode='window'):
+        return self.window_handler.window_resize(x, y, mode)
+
+    def destroyAllWindows(self):
+        cv2.destroyAllWindows()
+        return 0

@@ -83,18 +83,60 @@ class SendInputMouse:
             except Exception as e:
                 log("[WARNING]", f"Failed to show window: {e}")
 
-            # Try multiple times to set foreground window
+            # Enhanced foreground window handling
             max_attempts = 3
+            window_activated = False
+            
             for attempt in range(max_attempts):
                 try:
+                    # Try to set foreground window
                     win32gui.SetForegroundWindow(hwnd)
-                    break
+                    sleep(0.1)  # Give Windows time to process
+                    
+                    # Verify if window is actually in foreground
+                    foreground_hwnd = win32gui.GetForegroundWindow()
+                    if foreground_hwnd == hwnd:
+                        window_activated = True
+                        log("[INFO]", f"Window successfully brought to foreground on attempt {attempt + 1}")
+                        break
+                    else:
+                        foreground_title = win32gui.GetWindowText(foreground_hwnd)
+                        target_title = win32gui.GetWindowText(hwnd)
+                        log("[WARNING]", f"Window not in foreground. Current: '{foreground_title}', Target: '{target_title}' (attempt {attempt + 1})")
+                        
+                        # Additional methods to force foreground
+                        if attempt < max_attempts - 1:
+                            # Try alternative methods
+                            try:
+                                # Method 1: Use AttachThreadInput
+                                win32gui.AttachThreadInput(win32api.GetCurrentThreadId(), 
+                                                         win32api.GetWindowThreadProcessId(foreground_hwnd)[0], True)
+                                win32gui.SetForegroundWindow(hwnd)
+                                win32gui.AttachThreadInput(win32api.GetCurrentThreadId(), 
+                                                         win32api.GetWindowThreadProcessId(foreground_hwnd)[0], False)
+                            except:
+                                pass
+                            
+                            try:
+                                # Method 2: Use ShowWindow with SW_SHOW
+                                win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+                                win32gui.SetForegroundWindow(hwnd)
+                            except:
+                                pass
+                            
+                            sleep(0.2)  # Longer delay between attempts
+                        
                 except Exception as e:
                     if attempt == max_attempts - 1:
                         log("[ERROR]", f"Failed to set foreground window after {max_attempts} attempts: {e}")
-                        # Continue with click anyway
                     else:
-                        sleep(0.1)  # Short delay between attempts
+                        log("[WARNING]", f"Foreground attempt {attempt + 1} failed: {e}")
+                        sleep(0.2)
+            
+            if not window_activated:
+                log("[WARNING]", f"Window could not be brought to foreground after {max_attempts} attempts. Proceeding with click anyway.")
+                log("[ERROR]", f"Window could not be brought to foreground after {max_attempts} attempts. Aborting click.")
+                return False
 
             # Perform the click
             down = INPUT()
@@ -108,6 +150,10 @@ class SendInputMouse:
             ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
             sleep(duration)
             ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
+            
+            # Log success
+            log("[INFO]", "Click performed successfully on foreground window")
+                
             return True
 
         except Exception as e:
