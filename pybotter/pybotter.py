@@ -352,3 +352,6 @@ class PyBot:
 
     def save_current_screenshot_PNG(self, filename=None):
         self.bothandler.save_current_screenshot(filename)
+
+    def play_sound(self, sound_name):
+        self.bothandler.soundhandler.play_by_name(sound_name)

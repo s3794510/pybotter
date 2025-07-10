@@ -77,6 +77,23 @@ class SendInputMouse:
                 log("[ERROR]", f"Invalid window handle: {hwnd}")
                 return False
 
+            # Check if window is already in the foreground
+            foreground_hwnd = win32gui.GetForegroundWindow()
+            if foreground_hwnd == hwnd:
+                # Window is already in foreground, skip activation logic
+                down = INPUT()
+                down.type = INPUT_MOUSE
+                down.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTDOWN, 0, None)
+
+                up = INPUT()
+                up.type = INPUT_MOUSE
+                up.mi = MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
+
+                ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
+                sleep(duration)
+                ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
+                return True
+
             # Try to show and activate window
             try:
                 win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
@@ -150,9 +167,6 @@ class SendInputMouse:
             ctypes.windll.user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
             sleep(duration)
             ctypes.windll.user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
-            
-            # Log success
-            log("[INFO]", "Click performed successfully on foreground window")
                 
             return True
 

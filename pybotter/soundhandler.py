@@ -2,6 +2,8 @@ import threading
 from .utils import *
 import winsound
 from time import sleep
+import os
+import glob
 
 @creation_log
 class SoundHandler:
@@ -66,10 +68,87 @@ class SoundHandler:
 
     def sound_warning(self):
         self.play(self.soundfolderpath +'/warning.mp3')
+    
+    def sound_soft_notice(self):
+        self.play(self.soundfolderpath +'/soft notice.mp3')
 
     def play(self, sound_folder):
             thread = threading.Thread(target=self._playsoundWin, args=(sound_folder,))
             thread.start()
+
+    def play_by_name(self, sound_name):
+        """
+        Play a sound file by name without requiring the file extension.
+        Searches for files with common audio extensions (.mp3, .wav, .ogg, .flac, .m4a).
+        
+        Args:
+            sound_name (str): Name of the sound file without extension (e.g., 'pause', 'start')
+            
+        Returns:
+            bool: True if sound was successfully played, False otherwise
+        """
+        try:
+            # Validate input
+            if not sound_name or not isinstance(sound_name, str):
+                log("[ERROR]", f"Invalid sound name: {sound_name}. Must be a non-empty string.")
+                return False
+            
+            # Check if sound folder exists
+            if not os.path.exists(self.soundfolderpath):
+                log("[ERROR]", f"Sound folder does not exist: {self.soundfolderpath}")
+                return False
+            
+            # Common audio file extensions to search for
+            extensions = ['*.mp3', '*.wav', '*.ogg', '*.flac', '*.m4a', '*.aac']
+            
+            # Search for files with the given name and any supported extension
+            for ext in extensions:
+                pattern = os.path.join(self.soundfolderpath, f"{sound_name}{ext[1:]}")  # Remove * from extension
+                if os.path.exists(pattern):
+                    try:
+                        self.play(pattern)
+                        return True
+                    except Exception as e:
+                        log("[ERROR]", f"Failed to play sound file '{pattern}': {e}")
+                        continue
+            
+            # If no file found, try with glob pattern matching
+            for ext in extensions:
+                pattern = os.path.join(self.soundfolderpath, f"{sound_name}{ext}")
+                try:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        try:
+                            self.play(matches[0])  # Play the first match
+                            return True
+                        except Exception as e:
+                            log("[ERROR]", f"Failed to play sound file '{matches[0]}': {e}")
+                            continue
+                except Exception as e:
+                    log("[ERROR]", f"Error searching for pattern '{pattern}': {e}")
+                    continue
+            
+            # If no matching file found, provide detailed error information
+            try:
+                available_files = [os.path.basename(f) for f in os.listdir(self.soundfolderpath) 
+                                 if os.path.isfile(os.path.join(self.soundfolderpath, f))]
+                log("[ERROR]", f"Sound file '{sound_name}' not found in {self.soundfolderpath}")
+                log("[INFO]", f"Available files: {available_files}")
+                
+                # Suggest similar file names
+                similar_files = [f for f in available_files if sound_name.lower() in f.lower() or f.lower().startswith(sound_name.lower())]
+                if similar_files:
+                    log("[SUGGESTION]", f"Similar files found: {similar_files}")
+                    
+            except Exception as e:
+                log("[ERROR]", f"Error listing available files: {e}")
+            
+            return False
+            
+        except Exception as e:
+            log("[ERROR]", f"Unexpected error in play_by_name for '{sound_name}': {e}")
+            return False
+
 
     def play_alarm(self, mode=0):
         """
